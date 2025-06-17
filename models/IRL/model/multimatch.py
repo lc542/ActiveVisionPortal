@@ -1,7 +1,3 @@
-### https://github.com/AdinaWagner/multimatch/blob/master/multimatch/multimatch.py
-#!/usr/bin/python3
-
-
 import numpy as np
 import math
 import collections

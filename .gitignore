@@ -1,0 +1,4 @@
+/models/Gazeformer/data/image_features/
+/models/Gazeformer/data/SemSS/segmentation_maps/
+
+/models/Gazeformer/checkpoints/gazeformer_cocosearch_TP.pkg

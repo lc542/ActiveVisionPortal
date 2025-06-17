@@ -26,8 +26,8 @@ def fixations2seq(fixations,  max_len):
     
 def get_args_parser_test():
     parser = argparse.ArgumentParser('Gaze Transformer Tester', add_help=False)
-    parser.add_argument('--dataset_dir', default= './dataset', type=str, help="Dataset Directory")
-    parser.add_argument('--img_ftrs_dir', default= './dataset/image_features', type=str, help="Directory of precomputed ResNet features")
+    parser.add_argument('--dataset_dir', default= 'datasets/COCO-Search18', type=str, help="Dataset Directory")
+    parser.add_argument('--img_ftrs_dir', default= 'models/Gazeformer/data/image_features', type=str, help="Directory of precomputed ResNet features")
     parser.add_argument('--im_h', default=20, type=int, help="Height of feature map input to encoder")
     parser.add_argument('--im_w', default=32, type=int, help="Width of feature map input to encoder")
     parser.add_argument('--patch_size', default=16, type=int, help="Patch size of feature map input with respect to fixation image dimensions (320X512)")
@@ -52,10 +52,10 @@ def get_args_parser_train():
     parser.add_argument('--head_lr', default=1e-6, type=float, help="Learning rate for SlowOpt")
     parser.add_argument('--tail_lr', default=1e-4, type=float, help="Learning rate for FastOpt")
     parser.add_argument('--belly_lr', default=2e-6, type=float, help="Learning rate for MidOpt")
-    parser.add_argument('--dataset_dir', default= './dataset', type=str, help="Dataset Directory")
+    parser.add_argument('--dataset_dir', default= 'datasets/COCO-Search18', type=str, help="Dataset Directory")
     parser.add_argument('--train_file', default= 'coco_search18_fixations_TP_train.json', type=str, help="Training fixation file")
     parser.add_argument('--valid_file', default= 'coco_search18_fixations_TP_validation.json', type=str, help="Validation fixation file")
-    parser.add_argument('--img_ftrs_dir', default= './dataset/image_features', type=str, help="Directory of precomputed ResNet features")
+    parser.add_argument('--img_ftrs_dir', default= 'models/Gazeformer/data/image_features', type=str, help="Directory of precomputed ResNet features")
     parser.add_argument('--im_h', default=20, type=int, help="Height of feature map input to encoder")
     parser.add_argument('--im_w', default=32, type=int, help="Width of feature map input to encoder")
     parser.add_argument('--patch_size', default=16, type=int, help="Patch size of feature map input with respect to fixation image dimensions (320X512)")

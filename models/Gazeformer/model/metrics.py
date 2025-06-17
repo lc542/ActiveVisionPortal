@@ -1,11 +1,12 @@
 import numpy as np
 import gzip
 from os.path import join
-from multimatch import docomparison
-from saliency_metrics import cc, nss
+from .multimatch import docomparison
+from .saliency_metrics import cc, nss
 import matplotlib.pyplot as plt
 import cv2
 from tqdm import tqdm
+
 
 def zero_one_similarity(a, b):
     if a == b:
@@ -31,7 +32,8 @@ def nw_matching(pred_string, gt_string, gap=0.0):
             F[i, j] = np.max([match, delete, insert])
     score = F[len(pred_string), len(gt_string)]
     return score / max(len(pred_string), len(gt_string))
-    
+
+
 def scanpath2clusters(meanshift, scanpath):
     string = []
     xs = scanpath['X']
@@ -40,8 +42,8 @@ def scanpath2clusters(meanshift, scanpath):
         symbol = meanshift.predict([[xs[i], ys[i]]])[0]
         string.append(symbol)
     return string
-    
-    
+
+
 def postprocessScanpaths(trajs):
     # convert actions to scanpaths
     scanpaths = []
@@ -51,15 +53,16 @@ def postprocessScanpaths(trajs):
             'X': fixs[:, 1],
             'Y': fixs[:, 0],
             'T': fixs[:, 2],
-            'subject':subject,
+            'subject': subject,
             'name': img_name,
             'task': task_name,
             'condition': condition
         })
     return scanpaths
-    
+
+
 # compute sequence score
-def compute_SS(preds, clusters, truncate, reduce='mean', print_clusters = False):
+def compute_SS(preds, clusters, truncate, reduce='mean', print_clusters=False):
     results = []
     for scanpath in tqdm(preds):
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
@@ -90,9 +93,10 @@ def compute_SS(preds, clusters, truncate, reduce='mean', print_clusters = False)
             raise NotImplementedError
         results.append(result)
     return results
-    
+
+
 # compute sequence score
-def compute_SS_Time(preds, clusters, truncate, time_dict, reduce='mean', print_clusters = False, tempbin = 50):
+def compute_SS_Time(preds, clusters, truncate, time_dict, reduce='mean', print_clusters=False, tempbin=50):
     results = []
     for scanpath in tqdm(preds):
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
@@ -100,13 +104,12 @@ def compute_SS_Time(preds, clusters, truncate, time_dict, reduce='mean', print_c
         ms = clusters[key]
         strings = ms['strings']
         cluster = ms['cluster']
-        
 
         pred = scanpath2clusters(cluster, scanpath)
         scores = []
         for subj, gt in strings.items():
             if len(gt) > 0:
-                time_string = time_dict[key+'-'+str(subj)]
+                time_string = time_dict[key + '-' + str(subj)]
                 pred = pred[:truncate] if len(pred) > truncate else pred
                 gtime_string = time_string[:truncate] if len(time_string) > truncate else time_string
                 ptime_string = scanpath['T'][:truncate] if len(scanpath['T']) > truncate else scanpath['T']
@@ -116,10 +119,10 @@ def compute_SS_Time(preds, clusters, truncate, time_dict, reduce='mean', print_c
                 pred_time = []
                 gt_time = []
                 for p, t_p in zip(pred, ptime_string):
-                    pred_time.extend([p for _ in range(int(t_p/tempbin))])
+                    pred_time.extend([p for _ in range(int(t_p / tempbin))])
                 for g, t_g in zip(gt, gtime_string):
-                    gt_time.extend([g for _ in range(int(t_g/tempbin))])
-                
+                    gt_time.extend([g for _ in range(int(t_g / tempbin))])
+
                 score = nw_matching(pred_time, gt_time)
                 scores.append(score)
         result = {}
@@ -136,7 +139,7 @@ def compute_SS_Time(preds, clusters, truncate, time_dict, reduce='mean', print_c
     return results
 
 
-def get_seq_score(preds, clusters, max_step, tasks=None, print_clusters = False):
+def get_seq_score(preds, clusters, max_step, tasks=None, print_clusters=False):
     results = compute_SS(preds, clusters, truncate=max_step, print_clusters=print_clusters)
     if tasks is None:
         return np.mean([r['score'] for r in results])
@@ -146,9 +149,10 @@ def get_seq_score(preds, clusters, max_step, tasks=None, print_clusters = False)
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
- 
-def get_seq_score_time(preds, clusters, max_step, time_dict, tasks=None, print_clusters = False):
-    results = compute_SS_Time(preds, clusters, truncate=max_step, time_dict = time_dict, print_clusters=print_clusters)
+
+
+def get_seq_score_time(preds, clusters, max_step, time_dict, tasks=None, print_clusters=False):
+    results = compute_SS_Time(preds, clusters, truncate=max_step, time_dict=time_dict, print_clusters=print_clusters)
     if tasks is None:
         return np.mean([r['score'] for r in results])
     else:
@@ -157,26 +161,28 @@ def get_seq_score_time(preds, clusters, max_step, time_dict, tasks=None, print_c
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
-        
+
+
 def scanpath2categories(seg_map, scanpath):
     string = []
     xs = scanpath['X']
     ys = scanpath['Y']
     ts = scanpath['T']
-    for x,y,t in zip(xs, ys, ts):
+    for x, y, t in zip(xs, ys, ts):
         symbol = str(int(seg_map[int(y), int(x)]))
         string.append((symbol, t))
     return string
+
 
 # compute semantic sequence score
 def compute_SSS(preds, fixations, truncate, segmentation_map_dir, reduce='mean'):
     results = []
     for scanpath in preds:
-        #print(len(results), '/', len(preds), end='\r')
+        # print(len(results), '/', len(preds), end='\r')
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
                                      scanpath['name'][:-4])
         strings = list(fixations[key])
-        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3]+'npy.gz'), "r") as r:
+        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3] + 'npy.gz'), "r") as r:
             segmentation_map = np.load(r, allow_pickle=True)
             r.close()
         pred = scanpath2categories(segmentation_map, scanpath)
@@ -202,33 +208,34 @@ def compute_SSS(preds, fixations, truncate, segmentation_map_dir, reduce='mean')
             raise NotImplementedError
         results.append(result)
     return results
-    
+
+
 # compute semantic sequence score
 def compute_SSS_time(preds, fixations, truncate, segmentation_map_dir, reduce='mean', tempbin=50):
     results = []
     for scanpath in preds:
-        #print(len(results), '/', len(preds), end='\r')
+        # print(len(results), '/', len(preds), end='\r')
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
                                      scanpath['name'][:-4])
         strings = list(fixations[key])
-        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3]+'npy.gz'), "r") as r:
+        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3] + 'npy.gz'), "r") as r:
             segmentation_map = np.load(r, allow_pickle=True)
             r.close()
         pred = scanpath2categories(segmentation_map, scanpath)
         scores = []
         human_scores = []
         pred_T = []
-        
+
         pred = pred[:truncate] if len(pred) > truncate else pred
         for p in pred:
-            pred_T.extend([p[0] for _ in range(int(p[1]/tempbin))])
+            pred_T.extend([p[0] for _ in range(int(p[1] / tempbin))])
         for gt in strings:
             gt_T = []
             if len(gt) > 0:
                 gt = gt[:truncate] if len(gt) > truncate else gt
                 for g in gt:
-                    gt_T.extend([g[0] for _ in range(int(g[1]/tempbin))])
-                
+                    gt_T.extend([g[0] for _ in range(int(g[1] / tempbin))])
+
                 score = nw_matching(pred_T, gt_T)
                 scores.append(score)
                 del gt_T
@@ -247,7 +254,7 @@ def compute_SSS_time(preds, fixations, truncate, segmentation_map_dir, reduce='m
 
 
 def get_semantic_seq_score(preds, fixations, max_step, segmentation_map_dir, tasks=None):
-    results = compute_SSS(preds, fixations, truncate=max_step, segmentation_map_dir = segmentation_map_dir)
+    results = compute_SSS(preds, fixations, truncate=max_step, segmentation_map_dir=segmentation_map_dir)
     if tasks is None:
         return np.mean([r['score'] for r in results])
     else:
@@ -256,9 +263,10 @@ def get_semantic_seq_score(preds, fixations, max_step, segmentation_map_dir, tas
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
-        
+
+
 def get_semantic_seq_score_time(preds, fixations, max_step, segmentation_map_dir, tasks=None):
-    results = compute_SSS_time(preds, fixations, truncate=max_step, segmentation_map_dir = segmentation_map_dir)
+    results = compute_SSS_time(preds, fixations, truncate=max_step, segmentation_map_dir=segmentation_map_dir)
     if tasks is None:
         return np.mean([r['score'] for r in results])
     else:
@@ -267,9 +275,8 @@ def get_semantic_seq_score_time(preds, fixations, max_step, segmentation_map_dir
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
-        
-        
-        
+
+
 def multimatch(s1, s2, im_size):
     s1x = s1['X']
     s1y = s1['Y']
@@ -316,10 +323,10 @@ def compute_mm(human_trajs, model_trajs, im_w, im_h, tasks=None):
                    human_trajs))
         all_mm_scores.append((task,
                               np.mean([
-                                  multimatch(traj, gt_traj, (im_w, im_h))#[:4]
+                                  multimatch(traj, gt_traj, (im_w, im_h))  # [:4]
                                   for gt_traj in gt_trajs
                               ],
-                                      axis=0)))
+                                  axis=0)))
 
     if tasks is not None:
         mm_tasks = {}
@@ -329,9 +336,8 @@ def compute_mm(human_trajs, model_trajs, im_w, im_h, tasks=None):
         return mm_tasks
     else:
         return np.mean([x[1] for x in all_mm_scores], axis=0)
-        
-        
-        
+
+
 def _Levenshtein_Dmatrix_initializer(len1, len2):
     Dmatrix = []
 
@@ -382,9 +388,9 @@ def _Levenshtein(string_1, string_2, substitution_cost=1):
         max_dist = len1 + len2
 
     return Dmatrix[len1][len2]
-    
-    
-def compute_ED(preds, clusters, truncate, reduce='mean', print_clusters = False):
+
+
+def compute_ED(preds, clusters, truncate, reduce='mean', print_clusters=False):
     results = []
     for scanpath in preds:
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
@@ -416,7 +422,8 @@ def compute_ED(preds, clusters, truncate, reduce='mean', print_clusters = False)
         results.append(result)
     return results
 
-def compute_ED_Time(preds, clusters, truncate, time_dict, reduce='mean', print_clusters = False, tempbin = 50):
+
+def compute_ED_Time(preds, clusters, truncate, time_dict, reduce='mean', print_clusters=False, tempbin=50):
     results = []
     for scanpath in preds:
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
@@ -424,13 +431,12 @@ def compute_ED_Time(preds, clusters, truncate, time_dict, reduce='mean', print_c
         ms = clusters[key]
         strings = ms['strings']
         cluster = ms['cluster']
-        
 
         pred = scanpath2clusters(cluster, scanpath)
         scores = []
         for subj, gt in strings.items():
             if len(gt) > 0:
-                time_string = time_dict[key+'-'+str(subj)]
+                time_string = time_dict[key + '-' + str(subj)]
                 pred = pred[:truncate] if len(pred) > truncate else pred
                 gtime_string = time_string[:truncate] if len(time_string) > truncate else time_string
                 ptime_string = scanpath['T'][:truncate] if len(scanpath['T']) > truncate else scanpath['T']
@@ -440,10 +446,10 @@ def compute_ED_Time(preds, clusters, truncate, time_dict, reduce='mean', print_c
                 pred_time = []
                 gt_time = []
                 for p, t_p in zip(pred, ptime_string):
-                    pred_time.extend([p for _ in range(int(t_p/tempbin))])
+                    pred_time.extend([p for _ in range(int(t_p / tempbin))])
                 for g, t_g in zip(gt, gtime_string):
-                    gt_time.extend([g for _ in range(int(t_g/tempbin))])
-                
+                    gt_time.extend([g for _ in range(int(t_g / tempbin))])
+
                 score = _Levenshtein(pred_time, gt_time)
                 scores.append(score)
         result = {}
@@ -458,8 +464,9 @@ def compute_ED_Time(preds, clusters, truncate, time_dict, reduce='mean', print_c
             raise NotImplementedError
         results.append(result)
     return results
-    
-def get_ed(preds, clusters, max_step, tasks=None, print_clusters = False):
+
+
+def get_ed(preds, clusters, max_step, tasks=None, print_clusters=False):
     results = compute_ED(preds, clusters, truncate=max_step, print_clusters=print_clusters)
     if tasks is None:
         return np.mean([r['score'] for r in results])
@@ -469,9 +476,10 @@ def get_ed(preds, clusters, max_step, tasks=None, print_clusters = False):
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
-        
-def get_ed_time(preds, clusters, max_step, time_dict, tasks=None, print_clusters = False):
-    results = compute_ED_Time(preds, clusters, truncate=max_step, time_dict = time_dict, print_clusters=print_clusters)
+
+
+def get_ed_time(preds, clusters, max_step, time_dict, tasks=None, print_clusters=False):
+    results = compute_ED_Time(preds, clusters, truncate=max_step, time_dict=time_dict, print_clusters=print_clusters)
     if tasks is None:
         return np.mean([r['score'] for r in results])
     else:
@@ -486,11 +494,11 @@ def get_ed_time(preds, clusters, max_step, time_dict, tasks=None, print_clusters
 def compute_SED(preds, fixations, truncate, segmentation_map_dir, reduce='mean'):
     results = []
     for scanpath in preds:
-        #print(len(results), '/', len(preds), end='\r')
+        # print(len(results), '/', len(preds), end='\r')
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
                                      scanpath['name'][:-4])
         strings = list(fixations[key])
-        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3]+'npy.gz'), "r") as r:
+        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3] + 'npy.gz'), "r") as r:
             segmentation_map = np.load(r, allow_pickle=True)
             r.close()
         pred = scanpath2categories(segmentation_map, scanpath)
@@ -516,33 +524,34 @@ def compute_SED(preds, fixations, truncate, segmentation_map_dir, reduce='mean')
             raise NotImplementedError
         results.append(result)
     return results
-    
+
+
 # compute semantic sequence score
 def compute_SED_time(preds, fixations, truncate, segmentation_map_dir, reduce='mean', tempbin=50):
     results = []
     for scanpath in preds:
-        #print(len(results), '/', len(preds), end='\r')
+        # print(len(results), '/', len(preds), end='\r')
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
                                      scanpath['name'][:-4])
         strings = list(fixations[key])
-        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3]+'npy.gz'), "r") as r:
+        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3] + 'npy.gz'), "r") as r:
             segmentation_map = np.load(r, allow_pickle=True)
             r.close()
         pred = scanpath2categories(segmentation_map, scanpath)
         scores = []
         human_scores = []
         pred_T = []
-        
+
         pred = pred[:truncate] if len(pred) > truncate else pred
         for p in pred:
-            pred_T.extend([p[0] for _ in range(int(p[1]/tempbin))])
+            pred_T.extend([p[0] for _ in range(int(p[1] / tempbin))])
         for gt in strings:
             gt_T = []
             if len(gt) > 0:
                 gt = gt[:truncate] if len(gt) > truncate else gt
                 for g in gt:
-                    gt_T.extend([g[0] for _ in range(int(g[1]/tempbin))])
-                
+                    gt_T.extend([g[0] for _ in range(int(g[1] / tempbin))])
+
                 score = _Levenshtein(pred_T, gt_T)
                 scores.append(score)
                 del gt_T
@@ -558,9 +567,10 @@ def compute_SED_time(preds, fixations, truncate, segmentation_map_dir, reduce='m
             raise NotImplementedError
         results.append(result)
     return results
-    
+
+
 def get_semantic_ed(preds, fixations, max_step, segmentation_map_dir, tasks=None):
-    results = compute_SED(preds, fixations, truncate=max_step, segmentation_map_dir = segmentation_map_dir)
+    results = compute_SED(preds, fixations, truncate=max_step, segmentation_map_dir=segmentation_map_dir)
     if tasks is None:
         return np.mean([r['score'] for r in results])
     else:
@@ -569,9 +579,10 @@ def get_semantic_ed(preds, fixations, max_step, segmentation_map_dir, tasks=None
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
-        
+
+
 def get_semantic_ed_time(preds, fixations, max_step, segmentation_map_dir, tasks=None):
-    results = compute_SED_time(preds, fixations, truncate=max_step, segmentation_map_dir = segmentation_map_dir)
+    results = compute_SED_time(preds, fixations, truncate=max_step, segmentation_map_dir=segmentation_map_dir)
     if tasks is None:
         return np.mean([r['score'] for r in results])
     else:
@@ -580,18 +591,18 @@ def get_semantic_ed_time(preds, fixations, max_step, segmentation_map_dir, tasks
             scores.append(
                 np.mean([r['score'] for r in results if r['task'] == task]))
         return dict(zip(tasks, scores))
-    
-    
+
+
 def get_cc(pred_dict, gt_dict):
     cc_res = []
     for key in gt_dict.keys():
         gt_list = gt_dict[key]
         pred_list = pred_dict[key]
         for g in gt_list:
-            gt_map = cv2.imread(g,0)
+            gt_map = cv2.imread(g, 0)
             res = []
             for p in pred_list:
-                pred_map = cv2.imread(p,0)
+                pred_map = cv2.imread(p, 0)
                 res.append(cc(pred_map, gt_map))
         cc_res.append(np.mean(res))
     return np.mean(cc_res)
@@ -603,10 +614,10 @@ def get_nss(pred_dict, gt_dict):
         gt_list = gt_dict[key]
         pred_list = pred_dict[key]
         for g in gt_list:
-            gt_map = cv2.imread(g,0)
+            gt_map = cv2.imread(g, 0)
             res = []
             for p in pred_list:
-                pred_map = cv2.imread(p,0)
+                pred_map = cv2.imread(p, 0)
                 res.append(nss(pred_map, gt_map))
         nss_res.append(np.mean(res))
     return np.mean(nss_res)

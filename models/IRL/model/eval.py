@@ -1,93 +1,111 @@
-"""Test script with evaluation.
-Usage:
-  test.py <hparams> <checkpoint_dir> <dataset_root> [--cuda=<id>]
-  test.py -h | --help
-
-Options:
-  -h --help     Show this screen.
-  --cuda=<id>   id of the cuda device [default: 0].
-"""
-
-import os
 import json
+import os.path
+
 import torch
 import numpy as np
-from torch.utils.data.dataset import Dataset
 from tqdm import tqdm
 from docopt import docopt
 from os.path import join
-from models.IRL.dataset import process_data
-from models.IRL.irl_dcb.config import JsonConfig
-import cv2 as cv
 
-from models.IRL.irl_dcb.data import LHF_IRL
-from models.IRL.irl_dcb.models import LHF_Policy_Cond_Small
-from models.IRL.irl_dcb.environment import IRL_Env4LHF
-from models.IRL.irl_dcb import utils, metrics
-from models.IRL.irl_dcb.utils import compute_search_cdf
+from .dataset import process_data
+from .config import JsonConfig
+from .data import LHF_IRL
+from .models import LHF_Policy_Cond_Small
+from .environment import IRL_Env4LHF
+from . import utils, metrics
+from .utils import compute_search_cdf
 
 torch.manual_seed(42620)
 np.random.seed(42620)
 
 
-def gen_scanpaths(generator,
-                  env_test,
-                  test_img_loader,
-                  patch_num,
-                  max_traj_len,
-                  im_w,
-                  im_h,
-                  num_sample=10):
+# def gen_scanpaths(generator,
+#                   env_test,
+#                   test_img_loader,
+#                   patch_num,
+#                   max_traj_len,
+#                   im_w,
+#                   im_h,
+#                   num_sample=10):
+#     all_actions = []
+#     for i_sample in range(num_sample):
+#         progress = tqdm(test_img_loader,
+#                         desc='trial ({}/{})'.format(i_sample + 1, num_sample))
+#         for i_batch, batch in enumerate(progress):
+#             env_test.set_data(batch)
+#             img_names_batch = batch['img_name']
+#             cat_names_batch = batch['cat_name']
+#             with torch.no_grad():
+#                 env_test.reset()
+#                 trajs = utils.collect_trajs(env_test,
+#                                             generator,
+#                                             patch_num,
+#                                             max_traj_len,
+#                                             is_eval=True,
+#                                             sample_action=True)
+#                 all_actions.extend([(cat_names_batch[i], img_names_batch[i],
+#                                      'present', trajs['actions'][:, i])
+#                                     for i in range(env_test.batch_size)])
+#
+#     scanpaths = utils.actions2scanpaths(all_actions, patch_num, im_w, im_h)
+#     utils.cutFixOnTarget(scanpaths, bbox_annos)
+#
+#     return scanpaths
+
+def gen_scanpaths(generator, env_test, test_img_loader, patch_num, max_traj_len, im_w, im_h, num_sample=10,
+                  bbox_annos=None):
     all_actions = []
     for i_sample in range(num_sample):
-        progress = tqdm(test_img_loader,
-                        desc='trial ({}/{})'.format(i_sample + 1, num_sample))
+        progress = tqdm(test_img_loader, desc=f'trial ({i_sample + 1}/{num_sample})')
         for i_batch, batch in enumerate(progress):
             env_test.set_data(batch)
             img_names_batch = batch['img_name']
             cat_names_batch = batch['cat_name']
             with torch.no_grad():
                 env_test.reset()
-                trajs = utils.collect_trajs(env_test,
-                                            generator,
-                                            patch_num,
-                                            max_traj_len,
-                                            is_eval=True,
-                                            sample_action=True)
-                all_actions.extend([(cat_names_batch[i], img_names_batch[i],
-                                     'present', trajs['actions'][:, i])
-                                    for i in range(env_test.batch_size)])
-
+                trajs = utils.collect_trajs(env_test, generator, patch_num, max_traj_len,
+                                            is_eval=True, sample_action=True)
+                all_actions.extend([
+                    (cat_names_batch[i], img_names_batch[i], 'present', trajs['actions'][:, i])
+                    for i in range(env_test.batch_size)
+                ])
     scanpaths = utils.actions2scanpaths(all_actions, patch_num, im_w, im_h)
-    utils.cutFixOnTarget(scanpaths, bbox_annos)
-
+    if bbox_annos:
+        utils.cutFixOnTarget(scanpaths, bbox_annos)
     return scanpaths
 
 
-if __name__ == '__main__':
+def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotation_root):
+    torch.manual_seed(42620)
+    np.random.seed(42620)
     # python models/IRL/my_eval.py models/IRL/hparams/coco_search18.json models/IRL/trained_models datasets/COCO-Search18/IRL --cuda=0
-    args = docopt(__doc__)
-    device = torch.device('cuda:{}'.format(args['--cuda']))
-    hparams = JsonConfig(args["<hparams>"])
-    checkpoint = args["<checkpoint_dir>"]
-    dataset_root = args["<dataset_root>"]
+    # args = docopt(__doc__)
+    # device = torch.device('cuda:{}'.format(args['--cuda']))
+    # # hparams = JsonConfig(args["<hparams>"])
+    # # checkpoint = args["<checkpoint_dir>"]
+    # # dataset_root = args["<dataset_root>"]
+    #
+    # checkpoint = 'models/IRL/trained_models'
+    # hparams_path = 'models/IRL/hparams/coco_search18.json'
+    # dataset_root = 'models/IRL/data/trainval'
+    # test_dataset_root = 'models/IRL/data/test'
+    # hparams = JsonConfig(hparams_path)
 
     DCB_dir_HR = join(dataset_root, 'DCBs/HR/')
     DCB_dir_LR = join(dataset_root, 'DCBs/LR/')
-
-    DCB_dir_HR_test = join(dataset_root, 'test', 'DCBs/HR/')
-    DCB_dir_LR_test = join(dataset_root, 'test', 'DCBs/LR/')
+    DCB_dir_HR_test = join(test_dataset_root, 'DCBs/HR/')
+    DCB_dir_LR_test = join(test_dataset_root, 'DCBs/LR/')
 
     data_name = '{}x{}'.format(hparams.Data.im_w, hparams.Data.im_h)
 
     bbox_annos = np.load(join(dataset_root, 'bbox_annos.npy'), allow_pickle=True).item()
-    bbox_annos_test = np.load(join(dataset_root, 'test', 'bbox_annos.npy'), allow_pickle=True).item()
+    bbox_annos_test = np.load(join(test_dataset_root, 'bbox_annos.npy'), allow_pickle=True).item()
 
-    with open(join(dataset_root, 'human_scanpaths_TP_trainval_train.json')) as f:
+    with open(os.path.join(annotation_root, 'coco_search18_fixations_TP_train.json')) as f:
         human_scanpaths_train = json.load(f)
-    with open(join(dataset_root, 'human_scanpaths_TP_trainval_valid.json')) as f:
+    with open(os.path.join(annotation_root, 'coco_search18_fixations_TP_validation.json')) as f:
         human_scanpaths_valid = json.load(f)
-    with open(join(dataset_root, 'test', 'human_scanpaths_TP_test_rescaled.json')) as f:
+    with open(os.path.join(annotation_root, 'coco_search18_fixations_TP_test.json')) as f:
         human_gt = json.load(f)
 
     all_init_fix_trajs = human_scanpaths_train + human_scanpaths_valid + human_gt
@@ -104,9 +122,9 @@ if __name__ == '__main__':
     dataset = process_data(human_scanpaths_train, human_scanpaths_valid,
                            DCB_dir_HR, DCB_dir_LR, bbox_annos, hparams)
 
-    train_task_img_pair = np.unique([
-        traj['task'] + '_' + traj['name'] for traj in human_scanpaths_train
-    ])
+    # train_task_img_pair = np.unique([
+    #     traj['task'] + '_' + traj['name'] for traj in human_scanpaths_train
+    # ])
 
     test_task_img_pair = np.unique([traj['task'] + '_' + traj['name'] for traj in human_gt])
 
@@ -140,7 +158,7 @@ if __name__ == '__main__':
                            device=device,
                            inhibit_return=True)
 
-    print('sample scanpaths (10 for each testing image)...')
+    print('[IRL] Generating sample scanpaths (10 for each testing image)...')
     predictions = gen_scanpaths(generator,
                                 env_test,
                                 dataloader,
@@ -151,14 +169,13 @@ if __name__ == '__main__':
                                 num_sample=1)
 
     # Evaluation
-    # MultiMatch
+    print("[IRL] Running evaluation metrics...")
     mm_score = metrics.compute_mm(human_gt, predictions, hparams.Data.im_w, hparams.Data.im_h)
     print("MultiMatch (Shape, Length, Position, Direction):", mm_score)
 
     # Scanpath Efficiency
     avg_sp_ratio = metrics.compute_avgSPRatio(predictions, bbox_annos_test, hparams.Data.max_traj_length)
     print("Avg Scanpath Ratio:", avg_sp_ratio)
-
 
     # Debug check for ID match
     def get_key(s):
@@ -168,7 +185,6 @@ if __name__ == '__main__':
             return s['task'] + '_' + s['name'].replace('.jpg', '')
         else:
             return None
-
 
     pred_keys = set(get_key(s) for s in predictions if get_key(s) is not None)
     gt_keys = set(get_key(s) for s in human_gt if get_key(s) is not None)

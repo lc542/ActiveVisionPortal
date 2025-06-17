@@ -1,4 +1,4 @@
-from models import ResNetCOCO
+from .models import ResNetCOCO
 import torchvision.transforms as T
 import torch
 import torch.nn.functional as F

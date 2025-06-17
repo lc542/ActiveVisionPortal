@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn, Tensor
 
-from positional_encodings import PositionEmbeddingSine2d
+from .positional_encodings import PositionEmbeddingSine2d
 
 class gazeformer(nn.Module):
     def __init__(self, transformer, spatial_dim, dropout=0.4, max_len = 7, patch_size  = 16, device = "cuda:0"):

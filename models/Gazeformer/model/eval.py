@@ -4,10 +4,11 @@ import json
 import numpy as np
 import torch
 
-from models import Transformer
-from gazeformer import gazeformer
-from utils import seed_everything, get_args_parser_test
-from metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_semantic_seq_score, get_semantic_seq_score_time
+from .models import Transformer
+from .gazeformer import gazeformer
+from .utils import seed_everything, get_args_parser_test
+from .metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_semantic_seq_score, \
+    get_semantic_seq_score_time
 from tqdm import tqdm
 import warnings
 import pickle
@@ -95,8 +96,13 @@ def test(args):
 
     print("Calculating Sequence Score...")
     seq_score = get_seq_score(predictions, fix_clusters, max_len)
+
+    print('Sequence Score : {:.3f}\n'.format(seq_score))
+
     print("Calculating Sequence Score with Duration...")
     seq_score_t = get_seq_score_time(predictions, fix_clusters, max_len, t_dict)
+
+    print('Sequence Score with Duration : {:.3f}\n'.format(seq_score_t))
 
     semantics_root = join(gazeformer_data_dir, 'SemSS')
     sem_file = 'test_TP_Sem.pkl' if args.condition == 'present' else 'test_TA_Sem.pkl'
@@ -108,16 +114,27 @@ def test(args):
 
     print("Calculating Semantic Sequence Score...")
     sem_seq_score = get_semantic_seq_score(predictions, fixations_dict, max_len, segmentation_map_dir)
+    print('Semantic Sequence Score: {:.3f}\n'.format(sem_seq_score))
 
-    return seq_score, seq_score_t, sem_seq_score
+    print("Calculating Semantic Sequence Score with Duration...")
+    sem_seq_score_t = get_semantic_seq_score_time(predictions, fixations_dict, max_len, segmentation_map_dir)
+    print('Semantic Sequence Score with Duration: {:.3f}\n'.format(sem_seq_score_t))
+
+    return seq_score, seq_score_t, sem_seq_score, sem_seq_score_t
 
 
 def main(args):
     seed_everything(args.seed)
-    seq_score, seq_score_t, sem_seq_score = test(args)
-    print('Sequence Score : {:.3f}, Sequence Score with Duration : {:.3f}, Semantic Score: {:.3f}'.format(seq_score,
-                                                                                                          seq_score_t,
-                                                                                                          sem_seq_score))
+    seq_score, seq_score_t, sem_seq_score, sem_seq_score_t = test(args)
+
+    # Sequence Score: 0.561, Sequence Score with (Duration): 0.511,
+    # Semantic Sequence Score: 0.490, Semantic Sequence Score with Duration: 0.456
+
+    print(
+        'Sequence Score : {:.3f}, Sequence Score with Duration : {:.3f}, Semantic Sequence Score: {:.3f}, Semantic Sequence Score with Duration: {:.3f}'.format(
+            seq_score,
+            seq_score_t,
+            sem_seq_score, sem_seq_score_t))
 
 
 if __name__ == '__main__':

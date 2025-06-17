@@ -1,6 +1,6 @@
 import numpy as np
-from irl_dcb.data import LHF_IRL, LHF_Human_Gaze
-from irl_dcb.utils import compute_search_cdf, preprocess_fixations
+from .data import LHF_IRL, LHF_Human_Gaze
+from .utils import compute_search_cdf, preprocess_fixations
 
 
 def process_data(trajs_train,

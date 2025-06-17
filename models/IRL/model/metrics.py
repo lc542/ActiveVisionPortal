@@ -58,13 +58,13 @@ def multimatch(s1, s2, im_size):
 #         return np.mean([x[1] for x in all_mm_scores], axis=0)
 
 def compute_mm(human_trajs, model_trajs, im_w, im_h, tasks=None):
-    print(f"[Debug] model_trajs 总数: {len(model_trajs)}")
-    empty_pred = sum(1 for traj in model_trajs if len(traj['X']) == 0)
-    print(f"[Debug] 空的预测轨迹数: {empty_pred}")
-
-    print(f"[Debug] human_trajs 总数: {len(human_trajs)}")
-    empty_gt = sum(1 for traj in human_trajs if len(traj['X']) == 0)
-    print(f"[Debug] 空的GT轨迹数: {empty_gt}")
+    # print(f"[Debug] model_trajs 总数: {len(model_trajs)}")
+    # empty_pred = sum(1 for traj in model_trajs if len(traj['X']) == 0)
+    # print(f"[Debug] 空的预测轨迹数: {empty_pred}")
+    #
+    # print(f"[Debug] human_trajs 总数: {len(human_trajs)}")
+    # empty_gt = sum(1 for traj in human_trajs if len(traj['X']) == 0)
+    # print(f"[Debug] 空的GT轨迹数: {empty_gt}")
 
     all_mm_scores = []
 
