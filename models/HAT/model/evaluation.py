@@ -8,6 +8,7 @@ from tqdm import tqdm
 import numpy as np
 from os.path import join
 import torch.nn.functional as F
+import os
 
 
 def get_IOR_mask(norm_x, norm_y, h, w, r):
@@ -312,6 +313,17 @@ def evaluate(model,
     metrics_dict[f'{TAP}_sp_len_err_mean'] = sp_len_diff.mean()
     metrics_dict[f'{TAP}_sp_len_err_std'] = sp_len_diff.std()
     metrics_dict[f'{TAP}_avg_sp_len'] = np.mean([len(x['X']) for x in scanpaths])
+
+    # === Compute MultiMatch metrics ===
+    print("[Info] Computing MultiMatch metrics...")
+    mm_scores = metrics.compute_mm(human_scanpath_test, scanpaths, pa.im_w, pa.im_h)
+    print(
+        f"[MultiMatch] Vec: {mm_scores[0]:.4f}, Dir: {mm_scores[1]:.4f}, Len: {mm_scores[2]:.4f}, Pos: {mm_scores[3]:.4f}")
+
+    metrics_dict[f"{TAP}_MM_Vector"] = mm_scores[0]
+    metrics_dict[f"{TAP}_MM_Direction"] = mm_scores[1]
+    metrics_dict[f"{TAP}_MM_Length"] = mm_scores[2]
+    metrics_dict[f"{TAP}_MM_Position"] = mm_scores[3]
         
     if not sample_action:
         prefix = 'Greedy_'
@@ -320,6 +332,9 @@ def evaluate(model,
             metrics_dict[prefix + k] = metrics_dict.pop(k)
 
     if log_dir is not None:
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
         for sp in scanpaths:
             sp['X'] = sp['X'].tolist()
             sp['Y'] = sp['Y'].tolist()

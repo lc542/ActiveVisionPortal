@@ -492,6 +492,49 @@ def scaled_time_delay_embedding_distance(
         return None
 
 
+def nw_matching(seq1, seq2, gap=0.0):
+    L1, L2 = len(seq1), len(seq2)
+    F = np.zeros((L1 + 1, L2 + 1), dtype=float)
+    for i in range(1, L1 + 1):
+        F[i, 0] = F[i - 1, 0] + gap
+    for j in range(1, L2 + 1):
+        F[0, j] = F[0, j - 1] + gap
+
+    for i in range(1, L1 + 1):
+        for j in range(1, L2 + 1):
+            match = F[i - 1, j - 1] + (1.0 if seq1[i - 1] == seq2[j - 1] else 0.0)
+            delete = F[i - 1, j] + gap
+            insert = F[i, j - 1] + gap
+            F[i, j] = max(match, delete, insert)
+
+    return F[L1, L2] / max(L1, L2)
+
+
+def quantize_to_grid(scanpath, screen_size, grid_size):
+    W, H = screen_size
+    C, R = grid_size
+    aoi_seq = []
+
+    for fix in scanpath:
+        if isinstance(fix, (list, tuple, np.ndarray)) and len(fix) >= 2:
+            x, y = fix[0], fix[1]
+        else:
+            raise ValueError(f"Invalid fixation: {fix}")
+
+        col = min(int(x / W * C), C - 1)
+        row = min(int(y / H * R), R - 1)
+        aoi_seq.append(row * C + col)
+
+    return aoi_seq
+
+
+def sequence_score_nw(human_scanpath, simulated_scanpath,
+                      screen_size=(1920, 1080), grid_size=(8, 8)):
+    sym1 = quantize_to_grid(human_scanpath, screen_size, grid_size)
+    sym2 = quantize_to_grid(simulated_scanpath, screen_size, grid_size)
+    return nw_matching(sym1, sym2, gap=0.0)
+
+
 if __name__ == "__main__":
     import scipy.io as sio
     import numpy as np
@@ -517,4 +560,3 @@ if __name__ == "__main__":
         simulated_fixations_list,
         stimulus
     )
-

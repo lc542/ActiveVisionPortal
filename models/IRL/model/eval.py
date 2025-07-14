@@ -185,9 +185,9 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
         else:
             return None
 
-    pred_keys = set(get_key(s) for s in predictions if get_key(s) is not None)
-    gt_keys = set(get_key(s) for s in human_gt if get_key(s) is not None)
-    anno_keys = set(k.replace('.jpg', '') for k in bbox_annos.keys())
+    # pred_keys = set(get_key(s) for s in predictions if get_key(s) is not None)
+    # gt_keys = set(get_key(s) for s in human_gt if get_key(s) is not None)
+    # anno_keys = set(k.replace('.jpg', '') for k in bbox_annos.keys())
 
     # print(f"[Debug] Prediction - Anno matched: {len(pred_keys & anno_keys)} / {len(pred_keys)}")
     # print(f"[Debug] GT        - Anno matched: {len(gt_keys & anno_keys)} / {len(gt_keys)}")
@@ -208,10 +208,9 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
     prob_mismatch = metrics.compute_prob_mismatch(model_cdf, human_mean_cdf)
     print("Probability Mismatch:", prob_mismatch)
 
-    # # clusters.pkl（ Sequence Score）
-    # with open("test_clusters.pkl", "rb") as f:
-    #     clusters = pickle.load(f)
+    # Sequence Score
+    fix_clusters = np.load(f'models/IRL/data/clusters_test.npy',
+                           allow_pickle=True).item()
 
-    # # Sequence Score
-    # seq_score = metrics.get_seq_score(predictions, clusters, hparams.Data.max_traj_length)
-    # print("Sequence Score:", seq_score)
+    seq_score = metrics.get_seq_score(predictions, fix_clusters, hparams.Data.max_traj_length)
+    print("Sequence Score:", seq_score)

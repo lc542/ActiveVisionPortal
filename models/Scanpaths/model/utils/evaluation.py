@@ -2,11 +2,13 @@ import torch
 import numpy as np
 import scipy.stats
 import copy
-
+from os.path import join
 from tqdm import tqdm
 import multimatch_gaze as multimatch
 from .evaltools.scanmatch import ScanMatch
-from .evaltools.visual_attention_metrics import string_edit_distance, scaled_time_delay_embedding_similarity
+from .evaltools.visual_attention_metrics import string_edit_distance, scaled_time_delay_embedding_similarity, \
+    sequence_score_nw
+
 
 def human_evaluation(dataloader):
     collect_multimatch_rlts = []
@@ -69,6 +71,7 @@ def human_evaluation(dataloader):
                         stde = scaled_time_delay_embedding_similarity(np_fix_vector_1, np_fix_vector_2, stimulus)
                         collect_STDE_rlts.append(stde)
                         scores_of_given_image_with_gt.append(stde)
+
                         scores_of_given_image.append(scores_of_given_image_with_gt)
                     start_index_of_vector.append(start_index_of_vector[-1] + len(fix_vectors) - 1)
                 start_index_of_image.append(start_index_of_image[-1] + len(fix_vectors))
@@ -89,7 +92,7 @@ def human_evaluation(dataloader):
     for sample_index in range(1, len(start_index_of_image)):
         start_idx = start_index_of_image[sample_index - 1]
         end_idx = start_index_of_image[sample_index]
-        sub_vector = start_index_of_vector[start_idx:end_idx+1]
+        sub_vector = start_index_of_vector[start_idx:end_idx + 1]
         sample_collect_SED_rlt = []
         for ii in range(1, len(sub_vector)):
             start_vec_idx = sub_vector[ii - 1]
@@ -121,13 +124,12 @@ def human_evaluation(dataloader):
 
     SED_metrics_best_rlts = [data_val.min() for data_val in sample_collect_SED_rlts]
     STDE_metrics_best_rlts = [data_val.max() for data_val in sample_collect_STDE_rlts]
-    SED_best_metrics= np.array(SED_metrics_best_rlts)
+    SED_best_metrics = np.array(SED_metrics_best_rlts)
     STDE_best_metrics = np.array(STDE_metrics_best_rlts)
     SED_best_metrics_mean = SED_best_metrics.mean()
     SED_best_metrics_std = SED_best_metrics.std()
     STDE_best_metrics_mean = STDE_best_metrics.mean()
     STDE_best_metrics_std = STDE_best_metrics.std()
-
 
     human_metrics = dict()
     human_metrics_std = dict()
@@ -177,12 +179,14 @@ def human_evaluation(dataloader):
         scores_of_each_images_dict[name] = score
     return human_metrics, human_metrics_std, scores_of_each_images_dict
 
+
 def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
     collect_multimatch_rlts = []
     collect_scanmatch_with_duration_rlts = []
     collect_scanmatch_without_duration_rlts = []
     collect_SED_rlts = []
     collect_STDE_rlts = []
+    collect_SEQ_SCORE_rlts = []
 
     # create a ScanMatch object
     ScanMatchwithDuration = ScanMatch(Xres=320, Yres=240, Xbin=16, Ybin=12, Offset=(0, 0), TempBin=50, Threshold=3.5)
@@ -232,6 +236,11 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
                 collect_STDE_rlts.append(stde)
                 scores_of_given_image_with_gt.append(stde)
 
+                # perform Sequence Score (NW)
+                seq_score = sequence_score_nw(np_fix_vector_1, np_fix_vector_2)
+                scores_of_given_image_with_gt.append(seq_score)
+                collect_SEQ_SCORE_rlts.append(seq_score)
+
                 scores_of_given_image.append(scores_of_given_image_with_gt)
 
             scores_of_each_images.append(list(np.array(scores_of_given_image).mean(axis=0)))
@@ -258,7 +267,7 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
     STDE_metrics_mean = STDE_metrics_rlts.mean()
     STDE_metrics_std = STDE_metrics_rlts.std()
 
-    SED_best_metrics= SED_metrics_rlts.min(-1)
+    SED_best_metrics = SED_metrics_rlts.min(-1)
     STDE_best_metrics = STDE_metrics_rlts.max(-1)
     SED_best_metrics_mean = SED_best_metrics.mean()
     SED_best_metrics_std = SED_best_metrics.std()
@@ -267,6 +276,11 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
 
     cur_metrics = dict()
     cur_metrics_std = dict()
+
+    SEQ_SCORE_metrics_mean = np.mean(collect_SEQ_SCORE_rlts)
+    SEQ_SCORE_metrics_std = np.std(collect_SEQ_SCORE_rlts)
+    cur_metrics["SequenceScore(NW)"] = {"score": SEQ_SCORE_metrics_mean}
+    cur_metrics_std["SequenceScore(NW)"] = {"score": SEQ_SCORE_metrics_std}
 
     multimatch_cur_metrics = dict()
     multimatch_cur_metrics["vector"] = multimatch_metric_mean[0]
@@ -309,6 +323,7 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
     cur_metrics_std["VAME"] = VAME_cur_metrics_std
 
     return cur_metrics, cur_metrics_std, scores_of_each_images
+
 
 def pairs_eval_scanmatch(gt_fix_vectors, predict_fix_vectors, ScanMatchwithDuration, ScanMatchwithoutDuration,
                          is_eliminating_nan=True):

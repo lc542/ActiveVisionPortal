@@ -402,7 +402,7 @@ class COCO_Search18_rl(Dataset):
             self.fixations = json.load(json_file)
 
         self.object_name = ["bottle", "bowl", "car", "chair", "clock", "cup", "fork", "keyboard", "knife",
-                            "laptop", "microwave", "mouse", "oven", "potted plant", "sink", "stop sign",
+                            "laptop", "microwave", "mouse", "oven", "potted_plant", "sink", "stop_sign",
                             "toilet", "tv"]
         self.name2int = dict()
         for index in range(len(self.object_name)):

@@ -264,6 +264,9 @@ def run_evaluation():
             in ['COCO-Search18', 'COCO-Freeview'],
             log_dir=log_dir)
         print("TP:", rst_tp)
+        if 'TP_MM_Vector' in rst_tp:
+            print(f"TP MultiMatch: Vec {rst_tp['TP_MM_Vector']:.4f}, Dir {rst_tp['TP_MM_Direction']:.4f}, "
+                  f"Len {rst_tp['TP_MM_Length']:.4f}, Pos {rst_tp['TP_MM_Position']:.4f}")
     if hparams.Data.TAP in ['TA', 'TAP', 'ALL']:
         rst_ta, pred_ta = evaluate(
             model,
@@ -284,6 +287,9 @@ def run_evaluation():
             in ['COCO-Search18', 'COCO-Freeview'],
             log_dir=log_dir)
         print("TA", rst_ta)
+        if 'TA_MM_Vector' in rst_ta:
+            print(f"TA MultiMatch: Vec {rst_ta['TA_MM_Vector']:.4f}, Dir {rst_ta['TA_MM_Direction']:.4f}, "
+                  f"Len {rst_ta['TA_MM_Length']:.4f}, Pos {rst_ta['TA_MM_Position']:.4f}")
     if hparams.Data.TAP in ['FV', 'ALL']:
         rst_fv, pred_fv = evaluate(
             model,
@@ -304,6 +310,9 @@ def run_evaluation():
             in ['COCO-Search18', 'COCO-Freeview'],
             log_dir=log_dir)
         print("FV", rst_fv)
+        if 'FV_MM_Vector' in rst_fv:
+            print(f"FV MultiMatch: Vec {rst_fv['FV_MM_Vector']:.4f}, Dir {rst_fv['FV_MM_Direction']:.4f}, "
+                  f"Len {rst_fv['FV_MM_Length']:.4f}, Pos {rst_fv['FV_MM_Position']:.4f}")
     return rst_tp, rst_ta, rst_fv
 
 
