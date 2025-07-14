@@ -27,7 +27,7 @@ def main(hparams, dataset_root, device, annotation_root):
     DCB_dir_LR = join(dataset_root, 'DCBs/LR/')
 
     # bounding box of the target object (for search efficiency evaluation)
-    bbox_annos = np.load(join(dataset_root, 'bbox_annos.npy'), allow_pickle=True).item()
+    bbox_annos = np.load(join(annotation_root, 'bbox_annos.npy'), allow_pickle=True).item()
 
     # load ground-truth human scanpaths
     with open(os.path.join(annotation_root, 'coco_search18_fixations_TP_train.json')) as f:

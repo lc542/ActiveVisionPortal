@@ -3,12 +3,13 @@ from os.path import join
 import json
 import numpy as np
 import torch
+from collections import defaultdict
 
 from .models import Transformer
 from .gazeformer import gazeformer
 from .utils import seed_everything, get_args_parser_test
 from .metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_semantic_seq_score, \
-    get_semantic_seq_score_time
+    get_semantic_seq_score_time, compute_mm
 from tqdm import tqdm
 import warnings
 import pickle
@@ -90,6 +91,7 @@ def test(args):
             pred_list.append((task_name, name, condition, idx + 1, scanpath))
 
     predictions = postprocessScanpaths(pred_list)
+
     # with open("models/Gazeformer/data/scanpaths_pred.pkl", "wb") as f:
     #     pickle.dump(predictions, f)
     fix_clusters = np.load(join(gazeformer_data_dir, 'clusters_test.npy'), allow_pickle=True).item()
@@ -120,21 +122,48 @@ def test(args):
     sem_seq_score_t = get_semantic_seq_score_time(predictions, fixations_dict, max_len, segmentation_map_dir)
     print('Semantic Sequence Score with Duration: {:.3f}\n'.format(sem_seq_score_t))
 
-    return seq_score, seq_score_t, sem_seq_score, sem_seq_score_t
+    print("\nCalculating MultiMatch...")
+    mm = compute_mm(human_scanpaths, predictions, args.im_w * args.patch_size, args.im_h * args.patch_size)
+    vec, dir_, len_, pos = mm[:4]
+
+    print("MultiMatch:")
+    print(f"  Vector:    {vec:.4f}")
+    print(f"  Direction: {dir_:.4f}")
+    print(f"  Length:    {len_:.4f}")
+    print(f"  Position:  {pos:.4f}")
+
+    return seq_score, seq_score_t, sem_seq_score, sem_seq_score_t, mm
 
 
 def main(args):
     seed_everything(args.seed)
-    seq_score, seq_score_t, sem_seq_score, sem_seq_score_t = test(args)
+    seq_score, seq_score_t, sem_seq_score, sem_seq_score_t, mm = test(args)
 
     # Sequence Score: 0.561, Sequence Score with (Duration): 0.511,
     # Semantic Sequence Score: 0.490, Semantic Sequence Score with Duration: 0.456
+    # MultiMatch:
+    # Vector: 0.9062
+    # Direction: 0.7303
+    # Length: 0.8591
+    # Position: 0.9112
+
+    vec, dir_, len_, pos, dur = mm  # 解包 MultiMatch
 
     print(
-        'Sequence Score : {:.3f}, Sequence Score with Duration : {:.3f}, Semantic Sequence Score: {:.3f}, Semantic Sequence Score with Duration: {:.3f}'.format(
-            seq_score,
-            seq_score_t,
-            sem_seq_score, sem_seq_score_t))
+        "Sequence Score               : {:.3f}".format(seq_score))
+    print(
+        "Sequence Score with Duration: {:.3f}".format(seq_score_t))
+    print(
+        "Semantic Sequence Score      : {:.3f}".format(sem_seq_score))
+    print(
+        "Semantic Sequence w/ Duration: {:.3f}".format(sem_seq_score_t))
+
+    print("\nMultiMatch Scores:")
+    print("  Vector    : {:.4f}".format(vec))
+    print("  Direction : {:.4f}".format(dir_))
+    print("  Length    : {:.4f}".format(len_))
+    print("  Position  : {:.4f}".format(pos))
+    print("  Duration  : {:.4f}".format(dur))
 
 
 if __name__ == '__main__':

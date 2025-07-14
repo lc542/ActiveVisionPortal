@@ -98,8 +98,7 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
 
     data_name = '{}x{}'.format(hparams.Data.im_w, hparams.Data.im_h)
 
-    bbox_annos = np.load(join(dataset_root, 'bbox_annos.npy'), allow_pickle=True).item()
-    bbox_annos_test = np.load(join(test_dataset_root, 'bbox_annos.npy'), allow_pickle=True).item()
+    bbox_annos = np.load(join(annotation_root, 'bbox_annos.npy'), allow_pickle=True).item()
 
     with open(os.path.join(annotation_root, 'coco_search18_fixations_TP_train.json')) as f:
         human_scanpaths_train = json.load(f)
@@ -129,7 +128,7 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
     test_task_img_pair = np.unique([traj['task'] + '_' + traj['name'] for traj in human_gt])
 
     test_dataset = LHF_IRL(DCB_dir_HR_test, DCB_dir_LR_test, target_init_fixs,
-                           test_task_img_pair, bbox_annos_test,
+                           test_task_img_pair, bbox_annos,
                            hparams.Data, catIds)
 
     # test_dataset = LHF_IRL(DCB_dir_HR, DCB_dir_LR, target_init_fixs,
@@ -174,7 +173,7 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
     print("MultiMatch (Shape, Length, Position, Direction):", mm_score)
 
     # Scanpath Efficiency
-    avg_sp_ratio = metrics.compute_avgSPRatio(predictions, bbox_annos_test, hparams.Data.max_traj_length)
+    avg_sp_ratio = metrics.compute_avgSPRatio(predictions, bbox_annos, hparams.Data.max_traj_length)
     print("Avg Scanpath Ratio:", avg_sp_ratio)
 
     # Debug check for ID match
@@ -186,19 +185,19 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
         else:
             return None
 
-    pred_keys = set(get_key(s) for s in predictions if get_key(s) is not None)
-    gt_keys = set(get_key(s) for s in human_gt if get_key(s) is not None)
-    anno_keys = set(k.replace('.jpg', '') for k in bbox_annos_test.keys())
+    # pred_keys = set(get_key(s) for s in predictions if get_key(s) is not None)
+    # gt_keys = set(get_key(s) for s in human_gt if get_key(s) is not None)
+    # anno_keys = set(k.replace('.jpg', '') for k in bbox_annos.keys())
 
-    print(f"[Debug] Prediction - Anno matched: {len(pred_keys & anno_keys)} / {len(pred_keys)}")
-    print(f"[Debug] GT        - Anno matched: {len(gt_keys & anno_keys)} / {len(gt_keys)}")
+    # print(f"[Debug] Prediction - Anno matched: {len(pred_keys & anno_keys)} / {len(pred_keys)}")
+    # print(f"[Debug] GT        - Anno matched: {len(gt_keys & anno_keys)} / {len(gt_keys)}")
 
     filtered_gt = [s for s in human_gt if s.get('fixOnTarget', False)]
-    print(f"[Debug]GT : {len(filtered_gt)} / {len(human_gt)}")
+    # print(f"[Debug]GT : {len(filtered_gt)} / {len(human_gt)}")
 
-    human_mean_cdf, human_scanpaths_grouped = compute_search_cdf(filtered_gt, bbox_annos_test,
+    human_mean_cdf, human_scanpaths_grouped = compute_search_cdf(filtered_gt, bbox_annos,
                                                                  max_step=hparams.Data.max_traj_length)
-    model_cdf, _ = compute_search_cdf(predictions, bbox_annos_test,
+    model_cdf, _ = compute_search_cdf(predictions, bbox_annos,
                                       max_step=hparams.Data.max_traj_length)
 
     # TFP-AUC
@@ -209,10 +208,9 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
     prob_mismatch = metrics.compute_prob_mismatch(model_cdf, human_mean_cdf)
     print("Probability Mismatch:", prob_mismatch)
 
-    # # clusters.pkl（ Sequence Score）
-    # with open("test_clusters.pkl", "rb") as f:
-    #     clusters = pickle.load(f)
+    # Sequence Score
+    fix_clusters = np.load(f'models/IRL/data/clusters_test.npy',
+                           allow_pickle=True).item()
 
-    # # Sequence Score
-    # seq_score = metrics.get_seq_score(predictions, clusters, hparams.Data.max_traj_length)
-    # print("Sequence Score:", seq_score)
+    seq_score = metrics.get_seq_score(predictions, fix_clusters, hparams.Data.max_traj_length)
+    print("Sequence Score:", seq_score)

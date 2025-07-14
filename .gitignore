@@ -1,4 +1,7 @@
 /models/Gazeformer/data/image_features/
 /models/Gazeformer/data/SemSS/segmentation_maps/
-
 /models/Gazeformer/checkpoints/gazeformer_cocosearch_TP.pkg
+
+/models/HAT/model/pixel_decoder/ops/build
+/models/HAT/model/pixel_decoder/ops/MultiScaleDeformableAttention.egg-info
+/models/HAT/pretrained_models/
