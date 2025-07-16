@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore")
 
 from .models import Transformer
 from .gazeformer import gazeformer
-from .utils import seed_everything, fixations2seq, get_args_parser_train, save_model_train
+from .utils import seed_everything, fixations2seq, save_model_train
 from .dataset import fixation_dataset, COCOSearch18Collator
 
 torch.autograd.set_detect_anomaly(True)
@@ -219,9 +219,3 @@ def main(args):
         with open(logfile, "a") as myfile:
             myfile.write(output_str)
             myfile.close()
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Gazeformer Train', parents=[get_args_parser_train()])
-    args = parser.parse_args()
-    main(args)

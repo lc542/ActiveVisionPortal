@@ -379,6 +379,3 @@ def main(args=None):
             if args.supervised_save and epoch == args.start_rl_epoch - 1:
                 cmd = 'cp -r ' + log_dir + ' ' + log_dir + '_supervised_save'
                 os.system(cmd)
-
-if __name__ == "__main__":
-    main()

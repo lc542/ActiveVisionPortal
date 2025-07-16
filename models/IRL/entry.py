@@ -18,8 +18,6 @@ def get_args_parser_train():
                         help='Path to hparams JSON file')
     parser.add_argument('--dataset_root', type=str, default=os.path.join(ROOT, 'data/trainval'),
                         help='Root path to training dataset')
-    parser.add_argument('--annotation_root', type=str, default=os.path.join(PROJECT_ROOT, 'datasets/COCO-Search18'),
-                        help='Root path to annotation')
     parser.add_argument('--cuda', type=int, default=0, help='CUDA device id')
     return parser
 
@@ -32,28 +30,30 @@ def get_args_parser_eval():
                         help='Root path to training dataset')
     parser.add_argument('--test_dataset_root', type=str, default=os.path.join(ROOT, 'data/test'),
                         help='Root path to test dataset')
-    parser.add_argument('--annotation_root', type=str, default=os.path.join(PROJECT_ROOT, 'datasets/COCO-Search18'),
-                        help='Root path to annotation')
     parser.add_argument('--checkpoint_dir', type=str, default=os.path.join(ROOT, 'pretrained_models'),
                         help='Path to trained generator .pkg')
     parser.add_argument('--cuda', type=int, default=0, help='CUDA device id')
     return parser
 
 
-def train(unknown_args):
+def train(unknown_args, dataset=None):
+    # parser.add_argument('--annotation_root', type=str, default=os.path.join(PROJECT_ROOT, 'datasets/COCO-Search18'), help='Root path to annotation')
+    print("\n=== IRL Train ===")
     parser = get_args_parser_train()
     args = parser.parse_args(unknown_args)
     hparams = JsonConfig(args.hparams)
 
-    # 切换 device
     device = torch.device(f'cuda:{args.cuda}')
     torch.manual_seed(42619)
     np.random.seed(42619)
 
+    args.annotation_root = dataset
+
     train_module.main(hparams, args.dataset_root, device, args.annotation_root)
 
 
-def eval(unknown_args):
+def eval(unknown_args, dataset=None):
+    print("\n=== IRL Evaluation ===")
     parser = get_args_parser_eval()
     args = parser.parse_args(unknown_args)
     hparams = JsonConfig(args.hparams)
@@ -61,6 +61,8 @@ def eval(unknown_args):
     device = torch.device(f'cuda:{args.cuda}')
     torch.manual_seed(42620)
     np.random.seed(42620)
+
+    args.annotation_root = dataset
 
     eval_module.main(hparams, args.dataset_root, args.test_dataset_root, args.checkpoint_dir, device,
                      args.annotation_root)

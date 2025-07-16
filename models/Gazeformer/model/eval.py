@@ -7,7 +7,7 @@ from collections import defaultdict
 
 from .models import Transformer
 from .gazeformer import gazeformer
-from .utils import seed_everything, get_args_parser_test
+from .utils import seed_everything
 from .metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_semantic_seq_score, \
     get_semantic_seq_score_time, compute_mm
 from tqdm import tqdm
@@ -147,7 +147,7 @@ def main(args):
     # Length: 0.8591
     # Position: 0.9112
 
-    vec, dir_, len_, pos, dur = mm  # 解包 MultiMatch
+    vec, dir_, len_, pos, dur = mm  # MultiMatch
 
     print(
         "Sequence Score               : {:.3f}".format(seq_score))
@@ -164,9 +164,3 @@ def main(args):
     print("  Length    : {:.4f}".format(len_))
     print("  Position  : {:.4f}".format(pos))
     print("  Duration  : {:.4f}".format(dur))
-
-
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser('Gaze Transformer Test', parents=[get_args_parser_test()])
-    args = parser.parse_args()
-    main(args)
