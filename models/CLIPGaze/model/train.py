@@ -13,7 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 from .models import Transformer
 from .CLIPGaze import CLIPGaze
-from .utils import seed_everything, fixations2seq, get_args_parser_train, save_model_train, cutFixOnTarget
+from .utils import seed_everything, fixations2seq, save_model_train, cutFixOnTarget
 from .dataset import fixation_dataset, COCOSearch18Collator
 torch.autograd.set_detect_anomaly(True)
 from .test import run_model
@@ -60,7 +60,7 @@ def train(epoch, args, model, SlowOpt, MidOpt, FastOpt, loss_fn_token, loss_fn_y
             dtw_loss = 0
             for b in range(batch_size):
                 dtw_distances = torch.cdist(tgt_out_yx[b][:lens_arr[b],:], out_yx[b][:lens_arr[b],:])
-                dtw_path = dtw_distances.min(dim=1)[0].mean()  # 计算最小距离并取平均
+                dtw_path = dtw_distances.min(dim=1)[0].mean()
                 dtw_loss += dtw_path
             dtw_loss /= batch_size
             # beta=0.5
@@ -87,7 +87,7 @@ def train(epoch, args, model, SlowOpt, MidOpt, FastOpt, loss_fn_token, loss_fn_y
         save_model_train(epoch, args, model, SlowOpt, MidOpt, FastOpt, model_dir, model_name)
     return token_losses / len(train_dataloader),  reg_losses / len(train_dataloader), t_losses / len(train_dataloader)
 
-def evaluate(model, device = 'cuda:0', im_h=20, im_w=32, project_num=16):
+def evaluate(args, model, device = 'cuda:0', im_h=20, im_w=32, project_num=16):
     model.eval()
 
     fixation_path = "datasets/COCO-Search18/coco_search18_fixations_TP_test.json"
@@ -271,7 +271,7 @@ def main(args):
         writer.add_scalar("AA_Scalar/train_t_loss", train_t_loss, epoch)
         ####################################
 
-        seq_score, FED, SemSS, SemFED, mm, cc, nss = evaluate(model = model, device = device)
+        seq_score, FED, SemSS, SemFED, mm, cc, nss = evaluate(args=args, model = model, device = device)
         ######################################
         writer.add_scalar("AA_Scalar/SS", seq_score, epoch)
         writer.add_scalar("AA_Scalar/FED", FED, epoch)
@@ -297,9 +297,3 @@ def main(args):
             with open(scorefile, "a") as myfile:
                 myfile.write(score_str)
                 myfile.close()
-    
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser('CLIPGaze Train', parents=[get_args_parser_train()])
-    args = parser.parse_args()
-    main(args)
-    
