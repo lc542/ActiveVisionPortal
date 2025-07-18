@@ -1,6 +1,6 @@
 import json
 import os.path
-
+from collections import defaultdict
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -177,13 +177,13 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
     print("Avg Scanpath Ratio:", avg_sp_ratio)
 
     # Debug check for ID match
-    def get_key(s):
-        if 'img' in s:
-            return s['img']
-        elif 'task' in s and 'name' in s:
-            return s['task'] + '_' + s['name'].replace('.jpg', '')
-        else:
-            return None
+    # def get_key(s):
+    #     if 'img' in s:
+    #         return s['img']
+    #     elif 'task' in s and 'name' in s:
+    #         return s['task'] + '_' + s['name'].replace('.jpg', '')
+    #     else:
+    #         return None
 
     # pred_keys = set(get_key(s) for s in predictions if get_key(s) is not None)
     # gt_keys = set(get_key(s) for s in human_gt if get_key(s) is not None)
@@ -209,8 +209,18 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
     print("Probability Mismatch:", prob_mismatch)
 
     # Sequence Score
-    fix_clusters = np.load(f'models/IRL/data/clusters_test.npy',
+    fix_clusters = np.load(f'models/IRL/data/clusters_clean.npy',
                            allow_pickle=True).item()
 
-    seq_score = metrics.get_seq_score(predictions, fix_clusters, hparams.Data.max_traj_length)
+    sps = []
+    for traj in predictions:
+        sps.append({
+            'X': traj['X'],
+            'Y': traj['Y'],
+            'name': traj['name'],
+            'task': traj['task'],
+            'condition': traj['condition']
+        })
+
+    seq_score = metrics.get_seq_score(sps, fix_clusters, hparams.Data.max_traj_length)
     print("Sequence Score:", seq_score)
