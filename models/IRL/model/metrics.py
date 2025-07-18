@@ -146,19 +146,27 @@ def compute_SS(preds, clusters, truncate, reduce='mean'):
     results = []
     for scanpath in preds:
         key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
-                                     scanpath['name'][:-4])
+                                     scanpath['name'].split('.')[0])
         ms = clusters[key]
+
         strings = ms['strings']
         cluster = ms['cluster']
 
         pred = scanpath2clusters(cluster, scanpath)
         scores = []
-        for gt in strings:
-            if len(gt) > 0:
-                pred = pred[:truncate] if len(pred) > truncate else pred
-                gt = gt[:truncate] if len(gt) > truncate else gt
-                score = nw_matching(pred, gt)
-                scores.append(score)
+        for gt in strings.values():
+            # print(f"GT: {gt}, type: {type(gt)}")
+
+            if isinstance(gt, (list, np.ndarray)):
+                gt = [int(i) if isinstance(i, np.int64) else i for i in gt]
+                if len(gt) > 0:
+                    pred = pred[:truncate] if len(pred) > truncate else pred
+                    gt = gt[:truncate] if len(gt) > truncate else gt
+                    score = nw_matching(pred, gt)
+                    scores.append(score)
+            else:
+                print(f"Skipping invalid gt: {gt}")
+                continue
         result = {}
         result['condition'] = scanpath['condition']
         result['task'] = scanpath['task']
