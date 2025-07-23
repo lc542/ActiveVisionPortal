@@ -15,6 +15,7 @@ fi
 
 source $ENV_PATH/bin/activate
 
+python -m ensurepip --upgrade
 python -m pip install --upgrade pip setuptools wheel
 
 python -m pip install git+https://github.com/openai/CLIP.git --no-build-isolation
