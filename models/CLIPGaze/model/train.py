@@ -13,7 +13,7 @@ import warnings
 warnings.filterwarnings("ignore")
 from .models import Transformer
 from .CLIPGaze import CLIPGaze
-from .utils import seed_everything, fixations2seq, save_model_train, cutFixOnTarget
+from .utils import seed_everything, fixations2seq, save_model_train, cutFixOnTarget, get_prior_maps
 from .dataset import fixation_dataset, COCOSearch18Collator
 torch.autograd.set_detect_anomaly(True)
 from .test import run_model
@@ -161,8 +161,25 @@ def evaluate(args, model, device = 'cuda:0', im_h=20, im_w=32, project_num=16):
 
     mm = compute_mm(test_target_trajs, predictions, 512, 320)
     mm = mm[:-1].mean()
-    print("Calculating cc,nss...")
-    cc, nss = compute_spatial_metrics_by_step(predictions, test_target_trajs)
+
+    print("Calculating ig, cc, nss, auc...")
+
+    with open(os.path.join(args.dataset_dir, 'coco_search18_fixations_TP_train.json')) as f:
+        human_scanpaths_train = json.load(f)
+    with open(os.path.join(args.dataset_dir, 'coco_search18_fixations_TP_validation.json')) as f:
+        human_scanpaths_valid = json.load(f)
+    with open(os.path.join(args.dataset_dir, 'coco_search18_fixations_TP_test.json')) as f:
+        human_gt = json.load(f)
+    hs = human_scanpaths_train + human_scanpaths_valid + human_gt
+    hs = list(filter(lambda x: x['fixOnTarget'] or x['condition'] == 'absent', hs))
+    hs = list(filter(lambda x: x['condition'] == args.condition, hs))
+
+    prior_maps = get_prior_maps(hs, im_w=512, im_h=320)
+    keys = list(prior_maps.keys())
+    for k in keys:
+        prior_maps[k] = torch.tensor(prior_maps.pop(k)).to(device)
+
+    ig, cc, nss, auc = compute_spatial_metrics_by_step(predictions, test_target_trajs, 512, 320, prior_maps)
 
     return seq_score, FED, SemSS, SemFED, mm, cc, nss
     

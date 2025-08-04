@@ -1,6 +1,12 @@
 import numpy as np
 from .multimatch import docomparison
 from . import utils
+import torch
+import cv2
+import scipy.ndimage as filters
+from sklearn.metrics import roc_auc_score
+import gzip
+from os.path import join
 
 
 def multimatch(s1, s2, im_size):
@@ -247,3 +253,201 @@ def compute_prob_mismatch(cdf, human_mean_cdf):
                        axis=1)))
     else:
         return np.sum(np.abs(cdf - human_mean_cdf))
+
+
+def compute_spatial_metrics_by_step(predicted_trajs,
+                                    gt_scanpaths,
+                                    im_w,
+                                    im_h,
+                                    prior_maps,
+                                    end_step=1):
+    sample_ids = np.unique(
+        [traj['task'] + '_' + traj['name'] for traj in predicted_trajs])
+    avg_info_gain = 0
+    num_fixs = 0
+    cc = 0
+    nss = 0
+    auc = 0
+    for sample_id in sample_ids:
+        task, image = sample_id.split('_')
+        trajs = list(
+            filter(lambda x: x['task'] == task and x['name'] == image,
+                   predicted_trajs))
+        assert len(trajs) > 0, 'empty trajs.'
+        # removing the predifined first fixation
+        if end_step > 1:
+            Xs = np.concatenate([traj['X'][1:end_step] for traj in trajs])
+            Ys = np.concatenate([traj['Y'][1:end_step] for traj in trajs])
+        else:
+            Xs = np.concatenate([traj['X'][1:] for traj in trajs])
+            Ys = np.concatenate([traj['Y'][1:] for traj in trajs])
+
+        fixs = np.stack([Xs, Ys]).T.astype(np.int32)
+        pred_smap = convert_fixations_to_map(fixs,
+                                             im_w,
+                                             im_h,
+                                             smooth=True)
+        gt_trajs = list(
+            filter(lambda x: x['task'] == task and x['name'] == image,
+                   gt_scanpaths))
+        assert len(gt_trajs) > 0, 'empty trajs.'
+        if end_step > 1:
+            Xs = np.concatenate([traj['X'][1:end_step] for traj in gt_trajs])
+            Ys = np.concatenate([traj['Y'][1:end_step] for traj in gt_trajs])
+        else:
+            Xs = np.concatenate([traj['X'][1:] for traj in gt_trajs])
+            Ys = np.concatenate([traj['Y'][1:] for traj in gt_trajs])
+        gt_fixs = np.stack([Xs, Ys]).T.astype(np.int32)
+        gt_smap = convert_fixations_to_map(gt_fixs,
+                                           im_w,
+                                           im_h,
+                                           smooth=True)
+
+        avg_info_gain += info_gain(pred_smap, gt_fixs, prior_maps[task])
+        num_fixs += len(gt_fixs)
+
+        cc += CC(pred_smap, gt_smap)
+        nss += NSS(pred_smap, gt_fixs)
+        auc += compute_auc(pred_smap, gt_fixs)
+
+    return avg_info_gain / num_fixs, cc / len(sample_ids), nss / num_fixs, auc / num_fixs
+
+
+def compute_auc(s_map, gt_fixs, num_negatives=10000, eps=1e-8):
+    H, W = s_map.shape
+    s_map = s_map.astype(np.float32)
+    s_map = (s_map - s_map.min()) / (s_map.max() - s_map.min() + eps)
+
+    # Positive scores: at fixation points
+    gt_x, gt_y = gt_fixs[:, 0], gt_fixs[:, 1]
+    gt_x = np.clip(gt_x, 0, W - 1)
+    gt_y = np.clip(gt_y, 0, H - 1)
+    pos_scores = s_map[gt_y, gt_x]
+
+    # Negative scores: random points
+    rand_x = np.random.randint(0, W, size=num_negatives)
+    rand_y = np.random.randint(0, H, size=num_negatives)
+    neg_scores = s_map[rand_y, rand_x]
+
+    y_true = np.concatenate([np.ones(len(pos_scores)), np.zeros(len(neg_scores))])
+    y_scores = np.concatenate([pos_scores, neg_scores])
+    return roc_auc_score(y_true, y_scores)
+
+
+def convert_fixations_to_map(fixs,
+                             width,
+                             height,
+                             return_distribution=True,
+                             smooth=True,
+                             visual_angle=16):
+    assert len(fixs) > 0, 'Empty fixation list!'
+
+    fmap = np.zeros((height, width))
+    for x, y in fixs:
+        fmap[y, x] += 1
+
+    if smooth:
+        fmap = filters.gaussian_filter(fmap, sigma=visual_angle)
+
+    if return_distribution:
+        fmap /= (fmap.sum() + 1e-8)
+
+    return fmap
+
+
+def info_gain(predicted_probs, gt_fixs, base_probs, eps=2.2204e-16):
+    fired_probs = predicted_probs[gt_fixs[:, 1], gt_fixs[:, 0]]
+    fired_base_probs = base_probs[gt_fixs[:, 1], gt_fixs[:, 0]]
+    fired_base_probs = fired_base_probs.detach().cpu().numpy()
+    IG = np.sum(np.log2(fired_probs + eps) - np.log2(fired_base_probs + eps))
+
+    return IG
+
+
+def CC(saliency_map_1, saliency_map_2):
+    def normalize(saliency_map):
+        saliency_map -= saliency_map.mean()
+        std = saliency_map.std()
+
+        if std:
+            saliency_map /= std
+
+        return saliency_map, std == 0
+
+    smap1, constant1 = normalize(saliency_map_1.copy())
+    smap2, constant2 = normalize(saliency_map_2.copy())
+
+    if constant1 and not constant2:
+        return 0.0
+    else:
+        return np.corrcoef(smap1.flatten(), smap2.flatten())[0, 1]
+
+
+def NSS(saliency_map, gt_fixs):
+    xs, ys = gt_fixs[:, 0], gt_fixs[:, 1]
+
+    mean = saliency_map.mean()
+    std = saliency_map.std()
+
+    value = saliency_map[ys, xs].copy()
+    value -= mean
+
+    if std:
+        value /= std
+
+    return value.sum()
+
+
+def scanpath2categories(seg_map, scanpath):
+    string = []
+    xs = scanpath['X']
+    ys = scanpath['Y']
+    for x, y in zip(xs, ys):
+        symbol = str(int(seg_map[int(y), int(x)]))
+        string.append(symbol)
+    return string
+
+
+def compute_SSS(preds, fixations, truncate, segmentation_map_dir, reduce='mean'):
+    results = []
+    for scanpath in preds:
+        # print(len(results), '/', len(preds), end='\r')
+        key = 'test-{}-{}-{}'.format(scanpath['condition'], scanpath['task'],
+                                     scanpath['name'].split('.')[0])
+        strings = list(fixations[key])
+        with gzip.GzipFile(join(segmentation_map_dir, scanpath['name'][:-3] + 'npy.gz'), "r") as r:
+            segmentation_map = np.load(r, allow_pickle=True)
+            r.close()
+        pred = scanpath2categories(segmentation_map, scanpath)
+        scores = []
+        human_scores = []
+        pred = pred[:truncate] if len(pred) > truncate else pred
+        for gt in strings:
+            if len(gt) > 0:
+                gt = gt[:truncate] if len(gt) > truncate else gt
+                score = nw_matching(pred, gt)
+                scores.append(score)
+        result = {}
+        result['condition'] = scanpath['condition']
+        result['task'] = scanpath['task']
+        result['name'] = scanpath['name']
+        if reduce == 'mean':
+            result['score'] = np.array(scores).mean()
+        elif reduce == 'max':
+            result['score'] = max(scores)
+        else:
+            raise NotImplementedError
+        results.append(result)
+    return results
+
+
+def get_semantic_seq_score(preds, fixations, max_step, segmentation_map_dir, tasks=None):
+    results = compute_SSS(preds, fixations, truncate=max_step, segmentation_map_dir=segmentation_map_dir)
+    if tasks is None:
+        return np.mean([r['score'] for r in results])
+    else:
+        scores = []
+        for task in tasks:
+            scores.append(
+                np.mean([r['score'] for r in results if r['task'] == task]))
+        return dict(zip(tasks, scores))

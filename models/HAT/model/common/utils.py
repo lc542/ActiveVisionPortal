@@ -900,15 +900,14 @@ def convert_fixations_to_map(fixs,
     assert len(fixs) > 0, 'Empty fixation list!'
 
     fmap = np.zeros((height, width))
-    for i in range(len(fixs)):
-        x, y = fixs[i][0], fixs[i][1]
+    for x, y in fixs:
         fmap[y, x] += 1
 
     if smooth:
         fmap = filters.gaussian_filter(fmap, sigma=visual_angle)
 
     if return_distribution:
-        fmap /= fmap.sum()
+        fmap /= (fmap.sum() + 1e-8)
 
     return fmap
 

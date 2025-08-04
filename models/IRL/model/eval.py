@@ -1,19 +1,19 @@
 import json
-import os.path
+import os
 from collections import defaultdict
 import torch
 import numpy as np
 from tqdm import tqdm
 from docopt import docopt
 from os.path import join
-
 from .dataset import process_data
 from .config import JsonConfig
 from .data import LHF_IRL
 from .models import LHF_Policy_Cond_Small
 from .environment import IRL_Env4LHF
 from . import utils, metrics
-from .utils import compute_search_cdf
+from .utils import compute_search_cdf, get_prior_maps
+import pickle
 
 torch.manual_seed(42620)
 np.random.seed(42620)
@@ -169,8 +169,17 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
 
     # Evaluation
     print("[IRL] Running evaluation metrics...")
-    mm_score = metrics.compute_mm(human_gt, predictions, hparams.Data.im_w, hparams.Data.im_h)
-    print("MultiMatch (Shape, Length, Position, Direction):", mm_score)
+    mm = metrics.compute_mm(human_gt, predictions, hparams.Data.im_w, hparams.Data.im_h)
+
+    vec, dir_, len_, pos = mm[:4]
+    mm_mean = mm[:-1].mean()
+
+    print("MultiMatch:")
+    print(f"  Vector:    {vec:.4f}")
+    print(f"  Direction: {dir_:.4f}")
+    print(f"  Length:    {len_:.4f}")
+    print(f"  Position:  {pos:.4f}")
+    print(f"  MultiMatch Mean:  {mm_mean:.4f}")
 
     # Scanpath Efficiency
     avg_sp_ratio = metrics.compute_avgSPRatio(predictions, bbox_annos, hparams.Data.max_traj_length)
@@ -222,5 +231,38 @@ def main(hparams, dataset_root, test_dataset_root, checkpoint, device, annotatio
             'condition': traj['condition']
         })
 
+    print("Calculating Sequence Score...")
     seq_score = metrics.get_seq_score(sps, fix_clusters, hparams.Data.max_traj_length)
-    print("Sequence Score:", seq_score)
+    print('Sequence Score: {:.3f}\n'.format(seq_score))
+
+    print("Calculating Semantic Sequence Score...")
+    semantics_root = join(os.path.dirname(dataset_root), 'semantic_seq_full')
+
+    sem_file = 'test.pkl'
+    sem_path = join(semantics_root, sem_file)
+    segmentation_map_dir = join(semantics_root, 'segmentation_maps')
+
+    with open(sem_path, "rb") as f:
+        fixations_dict = pickle.load(f)
+
+    sem_seq_score = metrics.get_semantic_seq_score(predictions, fixations_dict, hparams.Data.max_traj_length,
+                                                   segmentation_map_dir)
+    print('Semantic Sequence Score: {:.3f}\n'.format(sem_seq_score))
+
+    print("Calculating IG, CC, NSS, AUC...")
+
+    hs = all_init_fix_trajs
+    hs = list(filter(lambda x: x['condition'] == 'present', hs))
+
+    prior_maps = get_prior_maps(hs, im_w=512, im_h=320)
+    keys = list(prior_maps.keys())
+    for k in keys:
+        prior_maps[k] = torch.tensor(prior_maps.pop(k)).to(device)
+
+    test_target_trajs = list(
+        filter(lambda x: x['split'] == 'test' and x['condition'] == 'present', human_gt))
+    ig, cc, nss, auc = metrics.compute_spatial_metrics_by_step(predictions, test_target_trajs, 512, 320, prior_maps)
+    print("IG: {:.3f}".format(ig))
+    print("CC: {:.3f}".format(cc))
+    print("NSS: {:.3f}".format(nss))
+    print("AUC: {:.3f}".format(auc))

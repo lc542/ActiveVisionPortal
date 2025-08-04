@@ -6,6 +6,8 @@ import warnings
 import os
 import re
 from shutil import copyfile
+import scipy.ndimage as filters
+
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
@@ -57,7 +59,7 @@ def select_action(obs, policy, sample_action, action_mask=None,
                 probs_new[action_mask] = eps
 
             probs_new /= probs_new.sum(dim=1).view(probs_new.size(0), 1)
-                
+
             m_new = Categorical(probs_new)
             actions = m_new.sample()
         else:
@@ -77,7 +79,6 @@ def collect_trajs(env,
                   max_traj_length,
                   is_eval=False,
                   sample_action=True):
-
     rewards = []
     obs_fov = env.observe()
     act, log_prob, value, prob = select_action((obs_fov, env.task_ids),
@@ -212,7 +213,7 @@ def process_trajs(trajs, gamma, mtd='CRITIC', tau=0.96):
 
         elif mtd == 'CRITIC':  # critic estimation
             traj['advantages'] = traj[
-                'rewards'] + gamma * values[1:] - values[:-1]
+                                     'rewards'] + gamma * values[1:] - values[:-1]
 
         elif mtd == 'GAE':  # generalized advantage estimation
             delta = traj['rewards'] + gamma * values[1:] - values[:-1]
@@ -314,7 +315,7 @@ def calc_overlap_ratio(bbox, patch_size, patch_num):
 
 def foveal2mask(x, y, r, h, w):
     Y, X = np.ogrid[:h, :w]
-    dist = np.sqrt((X - x)**2 + (Y - y)**2)
+    dist = np.sqrt((X - x) ** 2 + (Y - y) ** 2)
     mask = dist <= r
     return mask.astype(np.float32)
 
@@ -418,13 +419,13 @@ def save(global_step,
         raise ValueError("cannot save without optimzier")
     state = {
         "global_step":
-        global_step,
+            global_step,
         # DataParallel wrap model in attr `module`.
         "model":
-        model.module.state_dict()
-        if hasattr(model, "module") else model.state_dict(),
+            model.module.state_dict()
+            if hasattr(model, "module") else model.state_dict(),
         "optim":
-        optim.state_dict(),
+            optim.state_dict(),
     }
     save_path = os.path.join(pkg_dir, _file_at_step(global_step, name))
     best_path = os.path.join(pkg_dir, _file_best(name))
@@ -480,3 +481,55 @@ def load(step_or_path, model, name, optim=None, pkg_dir="", device=None):
 
     print("[Checkpoint]: Load {} successfully".format(save_path))
     return global_step
+
+
+def get_prior_maps(gt_scanpaths, im_w, im_h, visual_angle=24):
+    if len(gt_scanpaths) == 0:
+        return {}
+    task_names = np.unique([traj['task'] for traj in gt_scanpaths])
+    all_fixs = []
+    prior_maps = {}
+    for task in task_names:
+        Xs = np.concatenate([
+            traj['X'][1:] for traj in gt_scanpaths
+            if traj['split'] == 'train' and traj['task'] == task
+        ])
+        Ys = np.concatenate([
+            traj['Y'][1:] for traj in gt_scanpaths
+            if traj['split'] == 'train' and traj['task'] == task
+        ])
+        fixs = np.stack([Xs, Ys]).T.astype(np.int32)
+        prior_maps[task] = convert_fixations_to_map(fixs,
+                                                    im_w,
+                                                    im_h,
+                                                    smooth=True,
+                                                    visual_angle=visual_angle)
+        all_fixs.append(fixs)
+    all_fixs = np.concatenate(all_fixs)
+    prior_maps['all'] = convert_fixations_to_map(all_fixs,
+                                                 im_w,
+                                                 im_h,
+                                                 smooth=True,
+                                                 visual_angle=visual_angle)
+    return prior_maps
+
+
+def convert_fixations_to_map(fixs,
+                             width,
+                             height,
+                             return_distribution=True,
+                             smooth=True,
+                             visual_angle=16):
+    assert len(fixs) > 0, 'Empty fixation list!'
+
+    fmap = np.zeros((height, width))
+    for x, y in fixs:
+        fmap[y, x] += 1
+
+    if smooth:
+        fmap = filters.gaussian_filter(fmap, sigma=visual_angle)
+
+    if return_distribution:
+        fmap /= (fmap.sum() + 1e-8)
+
+    return fmap

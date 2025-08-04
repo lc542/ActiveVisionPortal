@@ -3,11 +3,14 @@ from os.path import join
 import json
 import numpy as np
 import torch
+import os
+
+from TEMP.saliency_metrics import cc
 from .models import Transformer
 from .CLIPGaze import CLIPGaze
-from .utils import seed_everything
-from .metrics import postprocessScanpaths, get_seq_score, get_ed, get_semantic_ed, get_semantic_seq_score, compute_mm, \
-    compute_spatial_metrics_by_step
+from .utils import seed_everything, get_prior_maps
+from .metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_ed, get_semantic_ed, \
+    get_semantic_seq_score, get_semantic_seq_score_time, compute_mm, compute_spatial_metrics_by_step
 from tqdm import tqdm
 import warnings
 import pickle
@@ -83,15 +86,25 @@ def test(args):
         task_name, name, condition = target_traj.split('_')
         image_ftrs = [torch.load(join(img_ftrs_dir, task_name.replace(' ', '_'), name.replace('jpg', 'pth')))]
         task_emb = embedding_dict[task_name]
-        scanpaths = run_model(model=model, src=image_ftrs, task=task_emb, device=device, num_samples=1)
+        scanpaths = run_model(model=model, src=image_ftrs, task=task_emb, device=device, num_samples=args.num_samples)
         for idx, scanpath in enumerate(scanpaths):
             pred_list.append((task_name, name, condition, idx + 1, scanpath))
+
+    print("[CLIPGaze] Running evaluation metrics...")
 
     predictions = postprocessScanpaths(pred_list)
     fix_clusters = np.load(join(clipgaze_data_dir, 'clusters_test.npy'), allow_pickle=True).item()
     print("Calculating Sequence Score...")
     seq_score = get_seq_score(predictions, fix_clusters, max_len)
+    print('Sequence Score : {:.3f}\n'.format(seq_score))
+
+    print("Calculating Sequence Score with Duration...")
+    seq_score_t = get_seq_score_time(predictions, fix_clusters, max_len, t_dict)
+    print('Sequence Score with Duration : {:.3f}\n'.format(seq_score_t))
+
+    print("Calculating FED...")
     FED = get_ed(predictions, fix_clusters, max_len)
+    print('FED: {:.3f}\n'.format(FED))
 
     if args.condition == 'present':
         with open('models/Gazeformer/data/SemSS/test_TP_Sem.pkl', "rb") as r:
@@ -101,27 +114,65 @@ def test(args):
         with open('models/Gazeformer/data/SemSS/test_TA_Sem.pkl', "rb") as r:
             fixations_dict = pickle.load(r)
             r.close()
-    print("Calculating SemSS,SemFED,mm...")
+
+    print("Calculating Semantic Sequence Score...")
     SemSS = get_semantic_seq_score(predictions, fixations_dict, max_len,
                                    'models/Gazeformer/data/SemSS/segmentation_maps')
-    SemFED = get_semantic_ed(predictions, fixations_dict, max_len, 'models/Gazeformer/data/SemSS/segmentation_maps')
+    print('Semantic Sequence Score: {:.3f}\n'.format(SemSS))
 
+    print("Calculating Semantic Sequence Score with Duration...")
+    SemSS_t = get_semantic_seq_score_time(predictions, fixations_dict, max_len, 'models/Gazeformer/data/SemSS/segmentation_maps')
+    print('Semantic Sequence Score with Duration: {:.3f}\n'.format(SemSS_t))
+
+    print("Calculating SemFED...")
+    SemFED = get_semantic_ed(predictions, fixations_dict, max_len, 'models/Gazeformer/data/SemSS/segmentation_maps')
+    print('SemFED: {:.3f}\n'.format(SemFED))
+
+    print("\nCalculating MultiMatch...")
     if args.condition == 'absent':
         for x in test_target_trajs:
             x['X'] = [a / 1680 * 512 for a in x['X']]
             x['Y'] = [a / 1050 * 320 for a in x['Y']]
 
     mm = compute_mm(test_target_trajs, predictions, 512, 320)
-    mm = mm[:-1].mean()
+    vec, dir_, len_, pos = mm[:4]
+    mm_mean = mm[:-1].mean()
 
-    print("Calculating cc,nss...")
-    cc, nss = compute_spatial_metrics_by_step(predictions, test_target_trajs)
+    print("MultiMatch:")
+    print(f"  Vector:    {vec:.4f}")
+    print(f"  Direction: {dir_:.4f}")
+    print(f"  Length:    {len_:.4f}")
+    print(f"  Position:  {pos:.4f}")
+    print(f"  MultiMatch Mean:  {mm_mean:.4f}")
 
-    return seq_score, FED, SemSS, SemFED, mm, cc, nss
+    print("Calculating IG, CC, NSS, AUC...")
+
+    with open(os.path.join(dataset_root, 'coco_search18_fixations_TP_train.json')) as f:
+        human_scanpaths_train = json.load(f)
+    with open(os.path.join(dataset_root, 'coco_search18_fixations_TP_validation.json')) as f:
+        human_scanpaths_valid = json.load(f)
+    with open(os.path.join(dataset_root, 'coco_search18_fixations_TP_test.json')) as f:
+        human_gt = json.load(f)
+    hs = human_scanpaths_train + human_scanpaths_valid + human_gt
+    hs = list(filter(lambda x: x['fixOnTarget'] or x['condition'] == 'absent', hs))
+    hs = list(filter(lambda x: x['condition'] == args.condition, hs))
+
+    prior_maps = get_prior_maps(hs, im_w=512, im_h=320)
+    keys = list(prior_maps.keys())
+    for k in keys:
+        prior_maps[k] = torch.tensor(prior_maps.pop(k)).to(device)
+
+    ig, cc, nss, auc = compute_spatial_metrics_by_step(predictions, test_target_trajs, 512, 320, prior_maps)
+    print("IG: {:.3f}".format(ig))
+    print("CC: {:.3f}".format(cc))
+    print("NSS: {:.3f}".format(nss))
+    print("AUC: {:.3f}".format(auc))
+
+    return seq_score, seq_score_t, FED, SemSS, SemSS_t, SemFED, mm_mean, ig, cc, nss, auc
 
 
 def main(args):
     seed_everything(args.seed)
-    seq_score, FED, SemSS, SemFED, mm, cc, nss = test(args)
-    print('Sequence Score : {:.3f}, FED : {:.3f}'.format(seq_score, FED))
-    print(seq_score, FED, SemSS, SemFED, mm, cc, nss)
+    seq_score, seq_score_t, FED, SemSS, SemSS_t, SemFED, mm_mean, ig, cc, nss, auc = test(args)
+    # print('Sequence Score : {:.3f}, FED : {:.3f}'.format(seq_score, FED))
+    print(seq_score, seq_score_t, FED, SemSS, SemSS_t, SemFED, mm_mean, ig, cc, nss, auc)

@@ -50,7 +50,7 @@ def compute_mm(human_trajs, model_trajs, im_w, im_h, tasks=None):
                                   multimatch(traj, gt_traj, (im_w, im_h))[:4]
                                   for gt_traj in gt_trajs
                               ],
-                                      axis=0)))
+                                  axis=0)))
 
     if tasks is not None:
         mm_tasks = {}
@@ -227,17 +227,16 @@ def get_semantic_seq_score(preds,
 def scanpath_ratio(traj, bbox):
     X1, Y1 = traj['X'][:-1], traj['Y'][:-1]
     X2, Y2 = traj['X'][1:], traj['Y'][1:]
-    traj_dist = np.sum(np.sqrt((X1 - X2)**2 + (Y1 - Y2)**2))
+    traj_dist = np.sum(np.sqrt((X1 - X2) ** 2 + (Y1 - Y2) ** 2))
     cx, cy = traj['X'][0], traj['Y'][0]
     tx, ty = bbox[0] + bbox[2] / 2.0, bbox[1] + bbox[3] / 2.0
-    target_dist = np.sqrt((tx - cx)**2 + (ty - cy)**2)
+    target_dist = np.sqrt((tx - cx) ** 2 + (ty - cy) ** 2)
     if traj_dist == 0:
         print("error traj", traj)
     return min(target_dist / traj_dist, 1.0)
 
 
 def compute_avgSPRatio(trajs, target_annos, max_step, tasks=None):
-
     all_sp_ratios = []
     for traj in trajs:
         key = traj['task'] + '_' + traj['name']
@@ -422,36 +421,51 @@ def compute_NSS(saliency_map, gt_fixs):
 
     return value.sum()
 
+
 def compute_cAUC(s_map, gt_next_fixs):
-    """Compute AUC_Judd metric for saliency maps.
-       
-    This is equivalent to compute the percentile of the saliency of ground-truth 
-    fixation in the predicted saliency map.
+    if s_map.ndim == 2:
+        if isinstance(s_map, np.ndarray):
+            s_map = torch.from_numpy(s_map)
+        if isinstance(gt_next_fixs, np.ndarray):
+            gt_next_fixs = torch.from_numpy(gt_next_fixs)
 
-    Args:
-       s_map: [B, H, W] tensor
-       gt_next_fixs: [B, 2] tensor
-    """
-    # thresholds are calculated from the salience map, only at places where fixations are present
-    thresholds = s_map[torch.arange(len(gt_next_fixs)), 
-                       gt_next_fixs[:, 1], 
-                       gt_next_fixs[:, 0]]
+        thresholds = s_map[gt_next_fixs[:, 1], gt_next_fixs[:, 0]]  # (N,)
 
-    bs = len(gt_next_fixs)
+        area = []
+        area.append(torch.tensor([0.0, 0.0]))  # [TP=0, FP=0]
 
-    area = []
-    area.append(torch.zeros(bs, 2))
-        
-    # In the salience map, keep only those pixels with values above threshold
-    temp = torch.zeros_like(s_map)
-    temp[s_map>=thresholds.view(bs, 1, 1)] = 1.0
-    temp = temp.view(bs, -1)
-    
-    # For each image, three is only one positive
-    tp = torch.ones(bs)
-    fp = (temp.sum(-1) - 1)/(temp.size(-1) - 1)
-    area.append(torch.stack([tp, fp.cpu()], dim=1))
-    area.append(torch.ones(bs, 2))
-    area = torch.stack(area, dim=1)
+        for thresh in thresholds:
+            binary_map = (s_map >= thresh).float()
+            tp = 1.0  # only one fixation point per eval
+            fp = (binary_map.sum() - 1) / (binary_map.numel() - 1)
+            area.append(torch.tensor([tp, fp]))
 
-    return torch.trapz(area[:, :, 0], area[:, :, 1]).sum()
+        area.append(torch.tensor([1.0, 1.0]))  # [TP=1, FP=1]
+
+        area = torch.stack(area)
+        return torch.trapz(area[:, 0], area[:, 1]).item()
+    elif s_map.ndim == 3:
+        thresholds = s_map[torch.arange(len(gt_next_fixs)),
+        gt_next_fixs[:, 1],
+        gt_next_fixs[:, 0]]
+
+        bs = len(gt_next_fixs)
+
+        area = []
+        area.append(torch.zeros(bs, 2))
+
+        # In the salience map, keep only those pixels with values above threshold
+        temp = torch.zeros_like(s_map)
+        temp[s_map >= thresholds.view(bs, 1, 1)] = 1.0
+        temp = temp.view(bs, -1)
+
+        # For each image, three is only one positive
+        tp = torch.ones(bs)
+        fp = (temp.sum(-1) - 1) / (temp.size(-1) - 1)
+        area.append(torch.stack([tp, fp.cpu()], dim=1))
+        area.append(torch.ones(bs, 2))
+        area = torch.stack(area, dim=1)
+
+        return torch.trapz(area[:, :, 0], area[:, :, 1]).sum()
+    else:
+        raise ValueError("Unsupported s_map dimensions")

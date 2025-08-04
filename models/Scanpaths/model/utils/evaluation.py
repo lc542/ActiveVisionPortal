@@ -186,7 +186,7 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
     collect_scanmatch_without_duration_rlts = []
     collect_SED_rlts = []
     collect_STDE_rlts = []
-    collect_SEQ_SCORE_rlts = []
+    # collect_SEQ_SCORE_rlts = []
 
     # create a ScanMatch object
     ScanMatchwithDuration = ScanMatch(Xres=320, Yres=240, Xbin=16, Ybin=12, Offset=(0, 0), TempBin=50, Threshold=3.5)
@@ -237,9 +237,9 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
                 scores_of_given_image_with_gt.append(stde)
 
                 # perform Sequence Score (NW)
-                seq_score = sequence_score_nw(np_fix_vector_1, np_fix_vector_2)
-                scores_of_given_image_with_gt.append(seq_score)
-                collect_SEQ_SCORE_rlts.append(seq_score)
+                # seq_score = sequence_score_nw(np_fix_vector_1, np_fix_vector_2)
+                # scores_of_given_image_with_gt.append(seq_score)
+                # collect_SEQ_SCORE_rlts.append(seq_score)
 
                 scores_of_given_image.append(scores_of_given_image_with_gt)
 
@@ -277,10 +277,10 @@ def evaluation(gt_fix_vectors, predict_fix_vectors, is_eliminating_nan=True):
     cur_metrics = dict()
     cur_metrics_std = dict()
 
-    SEQ_SCORE_metrics_mean = np.mean(collect_SEQ_SCORE_rlts)
-    SEQ_SCORE_metrics_std = np.std(collect_SEQ_SCORE_rlts)
-    cur_metrics["SequenceScore(NW)"] = {"score": SEQ_SCORE_metrics_mean}
-    cur_metrics_std["SequenceScore(NW)"] = {"score": SEQ_SCORE_metrics_std}
+    # SEQ_SCORE_metrics_mean = np.mean(collect_SEQ_SCORE_rlts)
+    # SEQ_SCORE_metrics_std = np.std(collect_SEQ_SCORE_rlts)
+    # cur_metrics["SequenceScore(NW)"] = {"score": SEQ_SCORE_metrics_mean}
+    # cur_metrics_std["SequenceScore(NW)"] = {"score": SEQ_SCORE_metrics_std}
 
     multimatch_cur_metrics = dict()
     multimatch_cur_metrics["vector"] = multimatch_metric_mean[0]

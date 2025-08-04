@@ -1,4 +1,5 @@
 import argparse
+import os
 from os.path import join
 import json
 import numpy as np
@@ -7,9 +8,9 @@ from collections import defaultdict
 
 from .models import Transformer
 from .gazeformer import gazeformer
-from .utils import seed_everything
+from .utils import seed_everything, get_prior_maps
 from .metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_semantic_seq_score, \
-    get_semantic_seq_score_time, compute_mm
+    compute_spatial_metrics_by_step, get_semantic_seq_score_time, compute_mm
 from tqdm import tqdm
 import warnings
 import pickle
@@ -96,6 +97,8 @@ def test(args):
     #     pickle.dump(predictions, f)
     fix_clusters = np.load(join(gazeformer_data_dir, 'clusters_test.npy'), allow_pickle=True).item()
 
+    print("[Gazeformer] Running evaluation metrics...")
+
     print("Calculating Sequence Score...")
     seq_score = get_seq_score(predictions, fix_clusters, max_len)
 
@@ -125,19 +128,43 @@ def test(args):
     print("\nCalculating MultiMatch...")
     mm = compute_mm(human_scanpaths, predictions, args.im_w * args.patch_size, args.im_h * args.patch_size)
     vec, dir_, len_, pos = mm[:4]
+    mm_mean = mm[:-1].mean()
 
     print("MultiMatch:")
     print(f"  Vector:    {vec:.4f}")
     print(f"  Direction: {dir_:.4f}")
     print(f"  Length:    {len_:.4f}")
     print(f"  Position:  {pos:.4f}")
+    print(f"  MultiMatch Mean:  {mm_mean:.4f}")
 
-    return seq_score, seq_score_t, sem_seq_score, sem_seq_score_t, mm
+    print("Calculating IG, CC, NSS, AUC...")
 
+    with open(os.path.join(dataset_root, 'coco_search18_fixations_TP_train.json')) as f:
+        human_scanpaths_train = json.load(f)
+    with open(os.path.join(dataset_root, 'coco_search18_fixations_TP_validation.json')) as f:
+        human_scanpaths_valid = json.load(f)
+    with open(os.path.join(dataset_root, 'coco_search18_fixations_TP_test.json')) as f:
+        human_gt = json.load(f)
+    hs = human_scanpaths_train + human_scanpaths_valid + human_gt
+    hs = list(filter(lambda x: x['fixOnTarget'] or x['condition'] == 'absent', hs))
+    hs = list(filter(lambda x: x['condition'] == args.condition, hs))
+
+    prior_maps = get_prior_maps(hs, im_w=512, im_h=320)
+    keys = list(prior_maps.keys())
+    for k in keys:
+        prior_maps[k] = torch.tensor(prior_maps.pop(k)).to(device)
+
+    ig, cc, nss, auc = compute_spatial_metrics_by_step(predictions, test_target_trajs, 512, 320, prior_maps)
+    print("IG: {:.3f}".format(ig))
+    print("CC: {:.3f}".format(cc))
+    print("NSS: {:.3f}".format(nss))
+    print("AUC: {:.3f}".format(auc))
+
+    return seq_score, seq_score_t, sem_seq_score, sem_seq_score_t, mm, ig, cc, nss, auc
 
 def main(args):
     seed_everything(args.seed)
-    seq_score, seq_score_t, sem_seq_score, sem_seq_score_t, mm = test(args)
+    seq_score, seq_score_t, sem_seq_score, sem_seq_score_t, mm, ig, cc, nss, auc = test(args)
 
     # Sequence Score: 0.561, Sequence Score with (Duration): 0.511,
     # Semantic Sequence Score: 0.490, Semantic Sequence Score with Duration: 0.456
@@ -147,20 +174,20 @@ def main(args):
     # Length: 0.8591
     # Position: 0.9112
 
-    vec, dir_, len_, pos, dur = mm  # MultiMatch
-
-    print(
-        "Sequence Score               : {:.3f}".format(seq_score))
-    print(
-        "Sequence Score with Duration: {:.3f}".format(seq_score_t))
-    print(
-        "Semantic Sequence Score      : {:.3f}".format(sem_seq_score))
-    print(
-        "Semantic Sequence w/ Duration: {:.3f}".format(sem_seq_score_t))
-
-    print("\nMultiMatch Scores:")
-    print("  Vector    : {:.4f}".format(vec))
-    print("  Direction : {:.4f}".format(dir_))
-    print("  Length    : {:.4f}".format(len_))
-    print("  Position  : {:.4f}".format(pos))
-    print("  Duration  : {:.4f}".format(dur))
+    # vec, dir_, len_, pos, dur = mm  # MultiMatch
+    #
+    # print(
+    #     "Sequence Score               : {:.3f}".format(seq_score))
+    # print(
+    #     "Sequence Score with Duration: {:.3f}".format(seq_score_t))
+    # print(
+    #     "Semantic Sequence Score      : {:.3f}".format(sem_seq_score))
+    # print(
+    #     "Semantic Sequence w/ Duration: {:.3f}".format(sem_seq_score_t))
+    #
+    # print("\nMultiMatch Scores:")
+    # print("  Vector    : {:.4f}".format(vec))
+    # print("  Direction : {:.4f}".format(dir_))
+    # print("  Length    : {:.4f}".format(len_))
+    # print("  Position  : {:.4f}".format(pos))
+    # print("  Duration  : {:.4f}".format(dur))

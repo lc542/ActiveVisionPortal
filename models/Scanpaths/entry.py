@@ -60,7 +60,7 @@ def get_args_parser_train():
 
 def get_args_parser_eval():
     parser = argparse.ArgumentParser(description="Scanpath prediction for images")
-    parser.add_argument("--mode", type=str, default="validation", help="Selecting running mode (default: validation)")
+    parser.add_argument("--mode", type=str, default="test", help="Selecting running mode")
     parser.add_argument("--detector_dir", type=str, default="models/Scanpaths/detectors",
                         help="Directory to the saliency maps")
     parser.add_argument("--width", type=int, default=320, help="Width of input data")
@@ -104,10 +104,6 @@ def train(unknown_args, dataset=None):
 
 
 def eval(unknown_args, dataset=None):
-    # parser.add_argument("--img_dir", type=str, default="datasets/COCO-Search18/images",
-    #                     help="Directory to the image data (stimuli)")
-    # parser.add_argument("--fix_dir", type=str, default="datasets/COCO-Search18",
-    #                     help="Directory to the raw fixation file")
     print("\n=== Scanpaths Evaluation ===")
     parser = get_args_parser_eval()
     args = parser.parse_args(unknown_args)

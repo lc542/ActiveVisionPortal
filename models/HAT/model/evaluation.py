@@ -115,6 +115,7 @@ def actions2scanpaths(norm_fixs, patch_num, im_h, im_w):
 
 def compute_conditional_saliency_metrics(pa, model, gazeloader, task_dep_prior_maps, device):
     n_samples, info_gain, nss, auc = 0, 0, 0, 0
+    cc = 0
     for batch in tqdm(gazeloader, desc='Computing saliency metrics'):
         img = batch['true_state'].to(device)
         task_ids = batch['task_id'].to(device)
@@ -134,6 +135,7 @@ def compute_conditional_saliency_metrics(pa, model, gazeloader, task_dep_prior_m
             [pa.im_w, pa.im_h])).to(torch.long)
         prior_maps = torch.stack(
             [task_dep_prior_maps[task] for task in batch['task_name']]).cpu()
+
         with torch.no_grad():
             logits = model(img, inp_seq, inp_padding_mask, inp_seq_high.to(device), task_ids)
             pred_fix_map = logits['pred_fixation_map']
@@ -154,13 +156,29 @@ def compute_conditional_saliency_metrics(pa, model, gazeloader, task_dep_prior_m
         info_gain += metrics.compute_info_gain(probs, gt_next_fixs, prior_maps)
         nss += metrics.compute_NSS(probs, gt_next_fixs)
         auc += metrics.compute_cAUC(probs, gt_next_fixs)
+
+        for i in range(probs.size(0)):
+            pred_map = probs[i].numpy()
+            x, y = gt_next_fixs[i].tolist()
+            gt_map = utils.convert_fixations_to_map([(x, y)],
+                                                    pa.im_w, pa.im_h,
+                                                    return_distribution=True,
+                                                    smooth=True)
+            cc += metrics.CC(pred_map, gt_map)
+
         n_samples += gt_next_fixs.size(0)
 
     info_gain /= n_samples
     nss /= n_samples
     auc /= n_samples
+    cc /= n_samples
+
+    print('Info gain: {:.4f}'.format(info_gain))
+    print('NSS: {:.4f}'.format(nss))
+    print('AUC: {:.4f}'.format(auc))
+    print('CC: {:.4f}'.format(cc))
         
-    return info_gain.item(), nss.item(), auc.item()
+    return info_gain.item(), nss.item(), auc.item(), cc.item()
 
 def sample_scanpaths(model, dataloader, pa, device, sample_action, center_initial=True):
 
@@ -228,7 +246,7 @@ def evaluate(model,
     # else:
     nonstop_scanpaths = actions2scanpaths(nonstop_actions, pa.patch_num, pa.im_h, pa.im_w)
 
-    print('Computing metrics...')
+    print("[HAT] Running evaluation metrics...")
     metrics_dict = {}
     if TAP == 'TP':
         if not sample_stop:
@@ -292,13 +310,14 @@ def evaluate(model,
     if output_saliency_metrics:
         # temporal spatial saliency metrics
         print("[Info] Computing conditional saliency metrics...")
-        ig, nss, auc = compute_conditional_saliency_metrics(
+        ig, nss, auc, cc = compute_conditional_saliency_metrics(
             pa, model, gazeloader, task_dep_prior_maps, device)
-        print(f"[Saliency] IG: {ig:.4f}, NSS: {nss:.4f}, AUC: {auc:.4f}")
+        print(f"[Saliency] IG: {ig:.4f}, NSS: {nss:.4f}, AUC: {auc:.4f}, CC: {cc:.4f}")
         metrics_dict.update({
             f"{TAP}_cIG": ig,
             f"{TAP}_cNSS": nss,
             f"{TAP}_cAUC": auc,
+            f"{TAP}_CC": cc,
         })
 
     print("[Info] Computing scanpath length error...")

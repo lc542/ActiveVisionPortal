@@ -133,6 +133,7 @@ class COCO_Search18(Dataset):
         fixation = self.fixations[idx]
         img_name = fixation["name"]
         task = fixation["task"]
+        subject = fixation["subject"]
         img_path = join(join(self.COCO_Search18_stimuli_dir, task), img_name)
 
         image_id = img_name.split(".")[0]
@@ -169,7 +170,8 @@ class COCO_Search18(Dataset):
             "duration_mask": duration_mask,
             "attention_map": attention_map,
             "img_name": img_name,
-            "task": task
+            "task": task,
+            "subject": subject
         }
 
     def collate_func(self, batch):
@@ -182,6 +184,7 @@ class COCO_Search18(Dataset):
         attention_map_batch = []
         img_name_batch = []
         task_batch = []
+        subject_batch = []
 
         for sample in batch:
             tmp_img, tmp_scanpath, tmp_duration,\
@@ -190,6 +193,7 @@ class COCO_Search18(Dataset):
                 sample["image"], sample["scanpath"], sample["duration"],\
                 sample["action_mask"], sample["duration_mask"], \
                 sample["attention_map"], sample["img_name"], sample["task"]
+            tmp_subject = sample["subject"]
             img_batch.append(tmp_img)
             scanpath_batch.append(tmp_scanpath)
             duration_batch.append(tmp_duration)
@@ -198,6 +202,7 @@ class COCO_Search18(Dataset):
             attention_map_batch.append(tmp_attention_map)
             img_name_batch.append(tmp_img_name)
             task_batch.append(tmp_task)
+            subject_batch.append(tmp_subject)
 
         data = dict()
         data["images"] = torch.stack(img_batch)
@@ -208,6 +213,7 @@ class COCO_Search18(Dataset):
         data["attention_maps"] = np.stack(attention_map_batch)
         data["img_names"] = img_name_batch
         data["tasks"] = np.stack(task_batch)
+        data["subjects"] = torch.tensor(subject_batch)
 
         data = {k:torch.from_numpy(v) if type(v) is np.ndarray else v for k,v in data.items()} # Turn all ndarray to torch tensor
 
@@ -225,7 +231,7 @@ class COCO_Search18_evaluation(Dataset):
                  COCO_Search18_detector_dir,
                  action_map=(30, 40),
                  resize=(240, 320),
-                 type="validation",
+                 type="test",
                  split="split1",
                  transform=None,
                  saliency_map_blur_sigma=25,
@@ -286,6 +292,7 @@ class COCO_Search18_evaluation(Dataset):
         fixations = self.fixations_list[idx]
         img_name = fixations[0]["name"]
         task = fixations[0]["task"]
+        subject = fixations[0]["subject"]
         img_path = join(join(self.COCO_Search18_stimuli_dir, task), img_name)
 
         image_id = img_name.split(".")[0]
@@ -335,6 +342,7 @@ class COCO_Search18_evaluation(Dataset):
             "attention_map": attention_map,
             "img_name": img_name,
             "task": task,
+            "subject": subject
         }
 
     def collate_func(self, batch):
@@ -344,16 +352,18 @@ class COCO_Search18_evaluation(Dataset):
         attention_map_batch = []
         img_name_batch = []
         task_batch = []
+        subject_batch = []
 
         for sample in batch:
             tmp_img, tmp_fix_vectors, tmp_attention_map, tmp_img_name, tmp_task, \
                 = sample["image"], sample["fix_vectors"], sample["attention_map"], sample["img_name"], sample["task"]
-
+            tmp_subject = sample["subject"]
             img_batch.append(tmp_img)
             fix_vectors_batch.append(tmp_fix_vectors)
             attention_map_batch.append(tmp_attention_map)
             img_name_batch.append(tmp_img_name)
             task_batch.append(tmp_task)
+            subject_batch.append(tmp_subject)
 
         data = dict()
         data["images"] = torch.stack(img_batch)
@@ -361,7 +371,7 @@ class COCO_Search18_evaluation(Dataset):
         data["attention_maps"] = np.stack(attention_map_batch)
         data["img_names"] = img_name_batch
         data["tasks"] = np.stack(task_batch)
-
+        data["subjects"] = torch.tensor(subject_batch)
         data = {k: torch.from_numpy(v) if type(v) is np.ndarray else v for k, v in
                 data.items()}  # Turn all ndarray to torch tensor
 
@@ -440,6 +450,7 @@ class COCO_Search18_rl(Dataset):
         fixations = self.fixations_list[idx]
         img_name = fixations[0]["name"]
         task = fixations[0]["task"]
+        subject = fixations[0]["subject"]
         img_path = join(join(self.COCO_Search18_stimuli_dir, task), img_name)
 
         image_id = img_name.split(".")[0]
@@ -489,6 +500,7 @@ class COCO_Search18_rl(Dataset):
             "attention_map": attention_map,
             "img_name": img_name,
             "task": task,
+            "subject": subject
         }
 
     def collate_func(self, batch):
@@ -498,16 +510,18 @@ class COCO_Search18_rl(Dataset):
         attention_map_batch = []
         img_name_batch = []
         task_batch = []
+        subject_batch = []
 
         for sample in batch:
             tmp_img, tmp_fix_vectors, tmp_attention_map, tmp_img_name, tmp_task, \
                 = sample["image"], sample["fix_vectors"], sample["attention_map"], sample["img_name"], sample["task"]
-
+            tmp_subject = sample["subject"]
             img_batch.append(tmp_img)
             fix_vectors_batch.append(tmp_fix_vectors)
             attention_map_batch.append(tmp_attention_map)
             img_name_batch.append(tmp_img_name)
             task_batch.append(tmp_task)
+            subject_batch.append(tmp_subject)
 
         data = dict()
         data["images"] = torch.stack(img_batch)
@@ -515,6 +529,7 @@ class COCO_Search18_rl(Dataset):
         data["attention_maps"] = np.stack(attention_map_batch)
         data["img_names"] = img_name_batch
         data["tasks"] = np.stack(task_batch)
+        data["subjects"] = torch.tensor(subject_batch)
 
         data = {k: torch.from_numpy(v) if type(v) is np.ndarray else v for k, v in
                 data.items()}  # Turn all ndarray to torch tensor

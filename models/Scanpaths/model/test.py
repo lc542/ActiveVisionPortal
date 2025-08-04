@@ -4,7 +4,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from torchvision import transforms
-
+import pickle
 import numpy as np
 import scipy.stats
 
@@ -21,15 +21,22 @@ import sys
 from .dataset.dataset import COCO_Search18, COCO_Search18_evaluation, COCO_Search18_rl
 from .models.baseline_attention_multihead import baseline
 from .utils.evaluation import human_evaluation, evaluation
+from .utils.utils import seed_everything, get_prior_maps
+from .utils.metrics import postprocessScanpaths, get_seq_score, get_seq_score_time, get_semantic_seq_score, \
+    compute_spatial_metrics_by_step, get_semantic_seq_score_time, compute_mm
 from .utils.logger import Logger
 from .models.sampling import Sampling
 
+
 def get_args():
     parser = argparse.ArgumentParser(description="Scanpath prediction for images")
-    parser.add_argument("--mode", type=str, default="validation", help="Selecting running mode (default: validation)")
-    parser.add_argument("--img_dir", type=str, default="datasets/COCO-Search18/images", help="Directory to the image data (stimuli)")
-    parser.add_argument("--fix_dir", type=str, default="datasets/COCO-Search18", help="Directory to the raw fixation file")
-    parser.add_argument("--detector_dir", type=str, default="models/Scanpaths/detectors", help="Directory to the saliency maps")
+    parser.add_argument("--mode", type=str, default="test", help="Selecting running mode")
+    parser.add_argument("--img_dir", type=str, default="datasets/COCO-Search18/images",
+                        help="Directory to the image data (stimuli)")
+    parser.add_argument("--fix_dir", type=str, default="datasets/COCO-Search18",
+                        help="Directory to the raw fixation file")
+    parser.add_argument("--detector_dir", type=str, default="models/Scanpaths/detectors",
+                        help="Directory to the saliency maps")
     parser.add_argument("--width", type=int, default=320, help="Width of input data")
     parser.add_argument("--height", type=int, default=240, help="Height of input data")
     parser.add_argument("--map_width", type=int, default=40, help="Height of output data")
@@ -43,9 +50,9 @@ def get_args():
     parser.add_argument("--eval_repeat_num", type=int, default=10, help="Repeat number for evaluation")
     parser.add_argument("--min_length", type=int, default=1, help="Minimum length of the generated scanpath")
     parser.add_argument("--max_length", type=int, default=16, help="Maximum length of the generated scanpath")
-    parser.add_argument("--ablate_attention_info", type=bool, default=False, help="Ablate the attention information or not")
+    parser.add_argument("--ablate_attention_info", type=bool, default=False,
+                        help="Ablate the attention information or not")
     return parser.parse_args()
-
 
 
 def main(args=None):
@@ -79,7 +86,7 @@ def main(args=None):
         logger.info("{key:20}: {value:}".format(key=key, value=value))
 
     validation_dataset = COCO_Search18_evaluation(args.img_dir, args.fix_dir, args.detector_dir,
-                                                  type="validation", transform=transform,
+                                                  type="test", transform=transform,
                                                   detector_threshold=args.detector_threshold)
 
     validation_loader = DataLoader(
@@ -123,12 +130,13 @@ def main(args=None):
     all_gt_fix_vectors = []
     all_predict_fix_vectors = []
     predict_results = []
+    prediction_scanpaths = []
     with tqdm(total=len(validation_loader) * repeat_num) as pbar_val:
         for i_batch, batch in enumerate(validation_loader):
             tmp = [batch["images"], batch["fix_vectors"], batch["attention_maps"], batch["tasks"],
-                   batch["img_names"]]
+                   batch["img_names"], batch["subjects"]]
             tmp = [_ if not torch.is_tensor(_) else _.cuda() for _ in tmp]
-            images, gt_fix_vectors, attention_maps, tasks, img_names = tmp
+            images, gt_fix_vectors, attention_maps, tasks, img_names, subjects = tmp
 
             N, C, H, W = images.shape
 
@@ -166,20 +174,92 @@ def main(args=None):
                     predict_result["length"] = len(predict_result["X"])
                     predict_results.append(predict_result)
 
+                    prediction_scanpaths.append({
+                        'X': predict_result["X"],
+                        'Y': predict_result["Y"],
+                        'T': predict_result["T"],
+                        'subject': subjects[index],
+                        'name': img_names[index],
+                        'task': object_name[tasks[index]],
+                        'condition': "present"
+                    })
+
                 pbar_val.update(1)
 
+    print("[Scanpaths] Running evaluation metrics...")
+
     cur_metrics, cur_metrics_std, _ = evaluation(all_gt_fix_vectors, all_predict_fix_vectors)
+
+    fixation_path = join(args.fix_dir, 'coco_search18_fixations_TP_test.json')
+    with open(fixation_path) as json_file:
+        human_scanpaths = json.load(json_file)
+    test_target_trajs = list(
+        filter(lambda x: x['split'] == 'test' and x['condition'] == 'present', human_scanpaths))
+    t_dict = {}
+    for traj in test_target_trajs:
+        key = 'test-{}-{}-{}-{}'.format(traj['condition'], traj['task'],
+                                        traj['name'][:-4], traj['subject'])
+
+        t_dict[key] = np.array(traj['T'])
+
+    fix_clusters = np.load(join(os.path.dirname(args.evaluation_dir), 'data/clusters_test.npy'),
+                           allow_pickle=True).item()
+
+    print("Calculating Sequence Score...")
+    seq_score = get_seq_score(prediction_scanpaths, fix_clusters, args.max_length)
+
+    print('Sequence Score : {:.3f}\n'.format(seq_score))
+
+    print("Calculating Sequence Score with Duration...")
+    seq_score_t = get_seq_score_time(prediction_scanpaths, fix_clusters, args.max_length, t_dict)
+
+    print('Sequence Score with Duration : {:.3f}\n'.format(seq_score_t))
+
+    semantics_root = join(os.path.dirname(args.evaluation_dir), 'data/SemSS')
+    sem_file = 'test_TP_Sem.pkl'
+    sem_path = join(semantics_root, sem_file)
+    segmentation_map_dir = join(semantics_root, 'segmentation_maps')
+
+    with open(sem_path, "rb") as f:
+        fixations_dict = pickle.load(f)
+
+    print("Calculating Semantic Sequence Score...")
+    sem_seq_score = get_semantic_seq_score(prediction_scanpaths, fixations_dict, args.max_length, segmentation_map_dir)
+    print('Semantic Sequence Score: {:.3f}\n'.format(sem_seq_score))
+    cur_metrics["SemSS"] = sem_seq_score
+
+    print("Calculating Semantic Sequence Score with Duration...")
+    sem_seq_score_t = get_semantic_seq_score_time(prediction_scanpaths, fixations_dict, args.max_length,
+                                                  segmentation_map_dir)
+    print('Semantic Sequence Score with Duration: {:.3f}\n'.format(sem_seq_score_t))
+
+    print("Calculating IG, CC, NSS, AUC...")
+    with open(os.path.join(args.fix_dir, 'coco_search18_fixations_TP_train.json')) as f:
+        human_scanpaths_train = json.load(f)
+    with open(os.path.join(args.fix_dir, 'coco_search18_fixations_TP_validation.json')) as f:
+        human_scanpaths_valid = json.load(f)
+    hs = human_scanpaths_train + human_scanpaths_valid + human_scanpaths
+    hs = list(filter(lambda x: x['fixOnTarget'] or x['condition'] == 'absent', hs))
+    hs = list(filter(lambda x: x['condition'] == 'present', hs))
+
+    prior_maps = get_prior_maps(hs, im_w=512, im_h=320)
+    keys = list(prior_maps.keys())
+    device = torch.device(f'cuda:{args.gpu_ids[0]}')
+    for k in keys:
+        prior_maps[k] = torch.tensor(prior_maps.pop(k)).to(device)
+
+    ig, cc, nss, auc = compute_spatial_metrics_by_step(prediction_scanpaths, test_target_trajs, 512, 320, prior_maps)
+    print("IG: {:.3f}".format(ig))
+    print("CC: {:.3f}".format(cc))
+    print("NSS: {:.3f}".format(nss))
+    print("AUC: {:.3f}".format(auc))
 
     with open(predicts_file, 'w') as f:
         json.dump(predict_results, f, indent=2)
 
-    logger.info("The metrics for best model performance are: ")
-    for metrics_key in cur_metrics.keys():
-        for (metric_name, metric_value) in cur_metrics[metrics_key].items():
-            logger.info("{metrics_key:10}-{metric_name:15}: {metric_value:.4f} +- {std:.4f}".format
-                        (metrics_key=metrics_key, metric_name=metric_name, metric_value=metric_value,
-                         std=cur_metrics_std[metrics_key][metric_name]))
-
-
-if __name__ == "__main__":
-    main()
+    for metrics_key, metrics_dict in cur_metrics.items():
+        if isinstance(metrics_dict, dict):
+            for metric_name, metric_value in metrics_dict.items():
+                print(f"{metrics_key} {metric_name.capitalize()}: {metric_value:.3f}")
+        else:
+            print(f"{metrics_key}: {metrics_dict:.3f}")
