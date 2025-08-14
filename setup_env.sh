@@ -32,3 +32,5 @@ python -m pip install black==25.1.0 click==8.2.1 fonttools==4.58.1 jinja2==3.1.4
 python -m pip install tensorflow==2.17.0 tensorboard==2.17.0 tensorboard-data-server==0.7.2 tensorflow-io-gcs-filesystem==0.32.0 wrapt==1.17.2 opt-einsum==3.4.0 ml-dtypes==0.4.0 flatbuffers==25.2.10 termcolor==3.1.0 gast==0.6.0 google-pasta==0.2.0 protobuf==4.25.8 keras==3.10.0
 
 python -m pip install git-filter-repo==2.47.0 libclang==18.1.1 llvmlite==0.44.0 ninja==1.11.1.4 numba==0.61.2 optree==0.13.0
+
+python -m pip install open_clip_torch accelerate
