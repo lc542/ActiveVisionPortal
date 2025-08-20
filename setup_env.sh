@@ -33,4 +33,10 @@ python -m pip install tensorflow==2.17.0 tensorboard==2.17.0 tensorboard-data-se
 
 python -m pip install git-filter-repo==2.47.0 libclang==18.1.1 llvmlite==0.44.0 ninja==1.11.1.4 numba==0.61.2 optree==0.13.0
 
-python -m pip install open_clip_torch accelerate
+python -m pip install open_clip_torch accelerate bitsandbytes flash_attn
+
+python -m pip install safetensors huggingface_hub typing_extensions packaging
+
+python -m pip install mpmath six pygments platformdirs scikit-learn
+
+# python -m pip install -U "transformers>=4.46,<5" "accelerate>=0.33" "huggingface_hub>=0.23" safetensors pillow tqdm
