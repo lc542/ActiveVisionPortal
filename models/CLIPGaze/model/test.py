@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import os
 
-from TEMP.saliency_metrics import cc
+from .saliency_metrics import cc
 from .models import Transformer
 from .CLIPGaze import CLIPGaze
 from .utils import seed_everything, get_prior_maps
